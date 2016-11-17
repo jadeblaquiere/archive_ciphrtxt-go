@@ -176,9 +176,10 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
                         h, err := ms.LHC.FindByI(I)
                         if err == nil {
                             if (h.expire + allowableClockSkew) > uint32(time.Now().Unix()) {
-                                fmt.Printf("GR%d: pushing I (%s) back onto queue\n", gr, hex.EncodeToString(I))
+                                fmt.Printf("GR%d: failing I (%s) dropping from queue\n", gr, hex.EncodeToString(I))
+                                //fmt.Printf("GR%d: pushing I (%s) back onto queue\n", gr, hex.EncodeToString(I))
                                 // push back on the queue
-                                Iqueue <- I
+                                //Iqueue <- I
                             }
                         }
                     }
