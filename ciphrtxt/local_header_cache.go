@@ -42,7 +42,7 @@ import (
     "time"
 )
 
-const lhcRefreshMinDelay = 10
+const lhcRefreshMinDelay = 30
 const lhcPeerConsecutiveErrorMax = 20
 const lhcPeerInfoMinDelay = 300
 
@@ -70,6 +70,7 @@ type LocalHeaderCache struct {
     peerCandidates []*peerCandidate
     discoverPeersMutex sync.Mutex
     discoverPeersInProgress bool
+    lastPeerSync uint32
 }
 
 func OpenLocalHeaderCache(filepath string) (lhc *LocalHeaderCache, err error) {
@@ -600,6 +601,30 @@ func (lhc *LocalHeaderCache) DiscoverPeers(exthost string, extport uint16) (err 
         }
     }
 
+    lhc.lastPeerSync = now
+    
     return nil
 }
 
+func (lhc *LocalHeaderCache) RefreshStatus() (status string) {
+    status = "  "
+    if lhc.syncInProgress {
+        status += "*  LH:  refresh "
+    } else {
+        status += "   LH:  refresh "
+    }
+    status += time.Unix(int64(lhc.lastRefresh),0).UTC().Format("2006-01-02 15:04:05")
+    status += fmt.Sprintf(" (-%04ds) ", (uint32(time.Now().Unix())-lhc.lastRefresh))
+    status += "\n  "
+    if lhc.discoverPeersInProgress {
+        status += "*  LH: discover "
+    } else {
+        status += "   LH: discover "
+    }
+    status += time.Unix(int64(lhc.lastPeerSync),0).UTC().Format("2006-01-02 15:04:05")
+    status += fmt.Sprintf(" (-%04ds)\n", (uint32(time.Now().Unix())-lhc.lastPeerSync))
+    for _, p := range lhc.Peers {
+        status += p.hc.RefreshStatus()
+    }
+    return status
+}

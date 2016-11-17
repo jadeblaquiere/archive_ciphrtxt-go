@@ -127,8 +127,9 @@ func main() {
             time.Sleep(time.Second * time.Duration(interval/2))
             fmt.Printf("msgstore.refresh calling DiscoverPeers()\n")
             ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
+            fmt.Printf("Refresh Status :%s:\n%s\n", time.Now().UTC().Format("2006-01-02 15:04:05"), ms.RefreshStatus())
         }
-    } (ms, 30)
+    } (ms, 60)
     
     ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
     

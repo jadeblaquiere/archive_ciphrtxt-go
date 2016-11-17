@@ -144,8 +144,9 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
                 select {
                 case I := <- Iqueue:
                     //mt.Printf("GR%d: seeking %s\n",gr,hex.EncodeToString(I))
-                    ordinal := rand.Perm(len(ms.LHC.Peers))
-                    for i := 0; i < len(ms.LHC.Peers); i++ {
+                    nPeers := len(ms.LHC.Peers)
+                    ordinal := rand.Perm(nPeers)
+                    for i := 0; i < nPeers; i++ {
                         phc := ms.LHC.Peers[ordinal[i]].hc
                         h, _ := phc.FindByI(I)
                         if h == nil {
@@ -230,6 +231,8 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
             }
         }
     }
+    
+    ms.pruneExpired()
     
     err = ms.recount()
     if err != nil {
@@ -612,4 +615,17 @@ func (ms *MessageStore) Sync() (err error) {
     ms.pruneExpired()
     
     return nil
+}
+
+func (ms *MessageStore) RefreshStatus() (status string) {
+    status = "  "
+    if ms.syncInProgress {
+        status += "*  MS: refresh "
+    } else {
+        status += "   MS: refresh "
+    }
+    status += time.Unix(int64(ms.lastRefresh),0).UTC().Format("2006-01-02 15:04:05")
+    status += fmt.Sprintf(" (-%04ds)\n", (uint32(time.Now().Unix())-ms.lastRefresh))
+    status += ms.LHC.RefreshStatus()
+    return status
 }

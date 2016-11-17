@@ -51,7 +51,7 @@ const apiPeer string = "api/v2/peers/"
 const apiHeadersSince string = "api/v2/headers?since="
 const apiMessagesDownload string = "api/v2/messages/"
 
-const refreshMinDelay = 10
+const refreshMinDelay = 30
 
 // {"pubkey": "030b5a7b432ec22920e20063cb16eb70dcb62dfef28d15eb19c1efeec35400b34b", "storage": {"max_file_size": 268435456, "capacity": 137438953472, "messages": 6252, "used": 17828492}}
 
@@ -631,4 +631,18 @@ func (hc *HeaderCache) postPeerInfo(host string, port uint16) (err error) {
     fmt.Printf("POST Complete\n")
     
     return nil
+}
+
+func (hc *HeaderCache) RefreshStatus() (status string) {
+    status = "  "
+    if hc.syncInProgress {
+        status += "*  HC:  refresh "
+    } else {
+        status += "   HC:  refresh "
+    }
+    status += time.Unix(int64(hc.lastRefreshLocal),0).UTC().Format("2006-01-02 15:04:05")
+    status += fmt.Sprintf(" (-%04ds) ", (uint32(time.Now().Unix())-hc.lastRefreshLocal))
+    status += fmt.Sprintf(" skew l-r: %d    ", (int(hc.lastRefreshLocal)-int(hc.lastRefreshServer)))
+    status += hc.baseurl + "\n"
+    return status
 }
