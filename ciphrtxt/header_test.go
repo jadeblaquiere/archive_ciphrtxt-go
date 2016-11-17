@@ -387,6 +387,18 @@ func TestSortRawMessageHeader (t *testing.T) {
     }
 }
 
+func TestCacheGetPeers (t *testing.T) {
+    hc, err := OpenHeaderCache("violet.ciphrtxt.com", 7754, "testdb/violet.ciphrtxt.com")
+    if err != nil {
+        t.Fail()
+    }
+    defer hc.Close()
+
+    if hc.getPeerInfo() != nil{
+        t.Fail()
+    }
+}
+
 func TestFindByI (t *testing.T) {
     hc, err := OpenHeaderCache("violet.ciphrtxt.com", 7754, "testdb/violet.ciphrtxt.com")
     if err != nil {

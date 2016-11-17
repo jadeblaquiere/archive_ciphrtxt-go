@@ -28,6 +28,7 @@
 package main
 
 import (
+    "flag"
     "fmt"
     //"log"
     //"net/http"
@@ -37,11 +38,12 @@ import (
     "io"
     "math/big"
     "os"
+    "runtime"
     "sort"
     "strconv"
     "time"
     
-    "github.com/jadeblaquiere/ctcd/btcec"
+    "github.com/jadeblaquiere/cttd/btcec"
     "github.com/jadeblaquiere/ciphrtxt-go/ciphrtxt"
     "github.com/kataras/iris"
     "github.com/iris-contrib/middleware/logger"
@@ -51,7 +53,23 @@ var ms *ciphrtxt.MessageStore
 var privKey *btcec.PrivateKey
 var pubKey *btcec.PublicKey
 
+//var configRPCUser      =   flag.String("rpcuser",          "", "Token Service RPC username")
+//var configRPCPass      =   flag.String("rpcpass",          "", "Token Service RPC password")
+//var configRPCPass      =   flag.String("rpcpass", "127.0.0.1", "Token Service RPC hostname/ip")
+//var configExtTokenHost = flag.String("tokenhost",          "", "Token Service advertised hostname/ip")
+var configExtTokenPort =    flag.Int("tokenport",        7764, "Token Service advertised port number")
+var configExternalHost =   flag.String("exthost",          "", "Message Service advertised hostname/ip")
+var configExternalPort =      flag.Int("extport",        8080, "Message Service advertised port number")
+var configListenPort   =   flag.Int("listenport",        8080, "Message Service listen port number")
+
 func main() {
+    nCpu := runtime.NumCPU()
+    nCpuOrig := runtime.GOMAXPROCS(nCpu)
+    
+    fmt.Printf("setting GOMAXPROCS to %d (was %d)\n", nCpu, nCpuOrig)
+
+    flag.Parse()
+
     curve := btcec.S256()
     p := curve.Params().P
     
@@ -71,6 +89,11 @@ func main() {
     }
     defer lhc.Close()
     
+    lhc.AddPeer("indigo.ciphrtxt.com",7754)
+    lhc.AddPeer("violet.ciphrtxt.com",7754)
+    
+    lhc.Sync()
+    
     startbig, _ := rand.Int(rand.Reader, big.NewInt(0x200))
     startbin := int(startbig.Int64()) + 0x200
     target := ciphrtxt.ShardSector{
@@ -85,21 +108,8 @@ func main() {
     }
     defer ms.Close()
     
-    lhc.AddPeer("indigo.ciphrtxt.com",7754)
-    lhc.AddPeer("violet.ciphrtxt.com",7754)
-    
-    lhc.Sync()
-    
     ms.SetTarget(target)
     
-    go func(ms *ciphrtxt.MessageStore, interval int) {
-        for {
-            fmt.Printf("msgstore.refresh calling Sync()\n")
-            ms.Sync()
-            time.Sleep(time.Second * time.Duration(interval))
-        }
-    } (ms, 30)
-
     customLogger := logger.New(logger.Config{
 		Status: true,
 		IP: true,
@@ -107,9 +117,22 @@ func main() {
 		Path: true,
 	})
 
-	//iris.Use(customLogger)
-
-	api := iris.New()
+	go func(ms *ciphrtxt.MessageStore, interval int) {
+        for {
+            fmt.Printf("msgstore.refresh calling Sleep()\n")
+            time.Sleep(time.Second * time.Duration(interval/2))
+            fmt.Printf("msgstore.refresh calling Sync()\n")
+            ms.Sync()
+            fmt.Printf("msgstore.refresh calling Sleep()\n")
+            time.Sleep(time.Second * time.Duration(interval/2))
+            fmt.Printf("msgstore.refresh calling DiscoverPeers()\n")
+            ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
+        }
+    } (ms, 30)
+    
+    ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
+    
+    api := iris.New()
     api.Use(customLogger)
     api.Get("/", index)
     api.Get("/api/v2/headers", get_headers)
@@ -117,12 +140,15 @@ func main() {
     api.Get("/api/v2/messages", get_messages)
     api.Get("/api/v2/messages/:msgid", download_message)
     api.Post("/api/v2/messages", upload_message)
+    api.Get("/api/v2/peers", get_peers)
     api.Get("/api/v2/status", get_status)
     api.Get("/api/v2/time", get_time)
     api.Get("/index", index)
     api.Get("/index.html", index)
     api.StaticWeb("/static", "./static", 1)
-    api.Listen(":8080")
+    listenString := ":" + strconv.Itoa(*configListenPort)
+    api.Listen(listenString)
+    //api.Listen(":8080")
 }
 
 func index(ctx *iris.Context){
@@ -207,6 +233,28 @@ func get_messages(ctx *iris.Context){
     ctx.JSON(iris.StatusOK, ciphrtxt.MessageListResponse{Messages: res})
 }
 
+func get_peers(ctx *iris.Context){
+    plr := ms.LHC.ListPeers()
+
+    ctx.JSON(iris.StatusOK, plr)
+}
+
+func add_peer(ctx *iris.Context){
+    var plr []ciphrtxt.PeerItemResponse
+    
+    err := ctx.ReadJSON(&plr)
+    if err != nil {
+        ctx.EmitError(iris.StatusBadRequest)
+        return
+    }
+    
+    for _, p := range plr {
+        fmt.Printf("received add_peer for %s:%d\n", p.Host, p.Port)
+    }
+
+    ctx.Text(iris.StatusOK, "")
+}
+
 func download_message(ctx *iris.Context){
     msgid := ctx.Param("msgid")
     I, err := hex.DecodeString(msgid)
@@ -282,20 +330,35 @@ func upload_message(ctx *iris.Context){
 }
 
 func get_status(ctx *iris.Context){
-    storage := ciphrtxt.StatusStorageResponse {
+    r_storage := ciphrtxt.StatusStorageResponse {
+        Headers: ms.LHC.Count,
         Messages: ms.Count,
         Maxfilesize: (8*1024*1024),
         Capacity: (256*1024*1024*1024),
         Used: 0,
     }
 
-    status := ciphrtxt.StatusResponse {
-        Pubkey: hex.EncodeToString(pubKey.SerializeCompressed()),
-        Version: "0.2.0",
-        Status: storage,
+    r_network := ciphrtxt.StatusNetworkResponse {
+        Host: *configExternalHost,
+        MSGPort: *configExternalPort,
+        TOKPort: *configExtTokenPort,
     }
 
-    ctx.JSON(iris.StatusOK, status)
+    r_target := ms.GetCurrentTarget()
+    r_sector := ciphrtxt.StatusSectorResponse {
+        Start: r_target.Start,
+        Ring: r_target.Ring,
+    }
+
+    r_status := ciphrtxt.StatusResponse {
+        Network: r_network,
+        Pubkey: hex.EncodeToString(pubKey.SerializeCompressed()),
+        Storage: r_storage,
+        Sector: r_sector,
+        Version: "0.2.0",
+    }
+
+    ctx.JSON(iris.StatusOK, r_status)
 }
 
 func get_time(ctx *iris.Context){

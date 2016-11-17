@@ -88,6 +88,7 @@ type MessageStore struct {
     rootpath string
     db *leveldb.DB
     syncMutex sync.Mutex
+    syncInProgress bool
     Count int
     sector ShardSector
     target ShardSector
@@ -234,6 +235,11 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
         return nil, err
     }
     
+    err = ms.syncLHC()
+    if err != nil {
+        return nil, err
+    }
+    
     fmt.Printf("MessageStore open, found %d messages\n", ms.Count)
     return ms, nil
 }
@@ -278,6 +284,40 @@ func (ms *MessageStore) recount() (err error) {
     return nil
 }
 
+func (ms *MessageStore) syncLHC() (err error) {
+    lhc := ms.LHC
+
+    emptyMessage := "0000000000000000000000000000000000000000000000000000000000000000"
+    iBegin, err := hex.DecodeString("02" + emptyMessage)
+    if err != nil {
+        return err
+    }
+    iEnd, err := hex.DecodeString("04" + emptyMessage)
+    if err != nil {
+        return err
+    }
+    
+    iter := ms.db.NewIterator(&util.Range{Start: iBegin,Limit: iEnd}, nil)
+
+    for iter.Next() {
+        _, err := lhc.FindByI(iter.Key())
+        if err != nil {
+            m := new(MessageFile)
+            value := iter.Value()
+            if m.Deserialize(value) == nil {
+                return errors.New("error parsing message value from database")
+            }
+            _, err := lhc.Insert(&(m.RawMessageHeader))
+            if err != nil {
+                return err
+            }
+        }
+    }
+    iter.Release()
+
+    return nil
+}
+
 func (ms *MessageStore) InsertFile(filepath string) (servertime uint32, err error) {
     m := Ingest(filepath)
     if m == nil {
@@ -309,6 +349,10 @@ func (ms *MessageStore) Insert(m *MessageFile) (servertime uint32, err error) {
         return 0, err
     }
     ms.Count += 1
+    _, err = ms.LHC.Insert(&(m.RawMessageHeader))
+    if err != nil {
+        return 0, err
+    }
     return m.Servertime, nil
 }
 
@@ -539,7 +583,23 @@ func (ms *MessageStore) SetTarget(target ShardSector) {
     go ms.populate(target.Ring)
 }
 
+func (ms *MessageStore) GetCurrentTarget() (target ShardSector) {
+    return ms.target
+}
+
 func (ms *MessageStore) Sync() (err error) {
+    //should only have a single goroutine sync'ing at a time
+    ms.syncMutex.Lock()
+    if ms.syncInProgress {
+        ms.syncMutex.Unlock()
+        return nil
+    }
+    ms.syncInProgress = true
+    ms.syncMutex.Unlock()
+    defer func(ms *MessageStore) {
+        ms.syncInProgress = false
+    }(ms)
+    
     lhc := ms.LHC
     lhc.Sync()
     newSync := lhc.lastRefresh

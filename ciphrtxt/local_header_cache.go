@@ -44,10 +44,12 @@ import (
 
 const lhcRefreshMinDelay = 10
 const lhcPeerConsecutiveErrorMax = 20
+const lhcPeerInfoMinDelay = 300
 
 type peerCache struct {
     hc    *HeaderCache
     lastRefresh   uint32
+    lastGetPeers  uint32
 }
 
 type peerCandidate struct {
@@ -59,12 +61,15 @@ type LocalHeaderCache struct {
     basepath string
     db *leveldb.DB
     syncMutex sync.Mutex
+    syncInProgress bool
     serverTime uint32
     lastRefresh uint32
     Count int
     Peers []*peerCache
     peerCandidateMutex sync.Mutex
     peerCandidates []*peerCandidate
+    discoverPeersMutex sync.Mutex
+    discoverPeersInProgress bool
 }
 
 func OpenLocalHeaderCache(filepath string) (lhc *LocalHeaderCache, err error) {
@@ -385,7 +390,15 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
     
     //should only have a single goroutine sync'ing at a time
     lhc.syncMutex.Lock()
-    defer lhc.syncMutex.Unlock()
+    if lhc.syncInProgress {
+        lhc.syncMutex.Unlock()
+        return nil
+    }
+    lhc.syncInProgress = true
+    lhc.syncMutex.Unlock()
+    defer func(lhc *LocalHeaderCache) {
+        lhc.syncInProgress = false
+    }(lhc)
     
     //copy and reset candidates list
     lhc.peerCandidateMutex.Lock()
@@ -406,8 +419,17 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
     
     insCount := int(0)
     
-    ordinal := rand.Perm(len(lhc.Peers))
-    for i := 0; i < len(lhc.Peers) ; i++ {
+    // NOTE: lhc.Peers can grow outside this function... if the list gets longer any past nPeers
+    // in the list will not get refreshed this round. The list is only truncated further below
+    // and processing within sync is serialized by a mutex so the list can't shrink during the loop
+    nPeers := len(lhc.Peers)
+    ordinal := rand.Perm(nPeers)
+    for i := 0 ; i < nPeers ; i++ {
+        p := lhc.Peers[ordinal[i]]
+        fmt.Printf("%d : %s:%d\n", ordinal[i], p.hc.host, p.hc.port)
+    }
+    fmt.Printf("\n")
+    for i := 0; i < nPeers ; i++ {
         p := lhc.Peers[ordinal[i]]
         
         p.hc.Sync()
@@ -470,6 +492,12 @@ func (lhc *LocalHeaderCache) AddPeer(host string, port uint16) {
 }
 
 func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
+    for _, p := range lhc.Peers {
+        if (p.hc.host == host) && (p.hc.port == port) {
+            return nil
+        }
+    }
+    
     dbpath := lhc.basepath + "/remote/" + host + "_" + strconv.Itoa(int(port)) + "/hdb"
     
     pc := new(peerCache)
@@ -513,6 +541,64 @@ func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
     //lhc.recount()
     
     fmt.Printf("LocalHeaderCache: %d active message headers\n", lhc.Count)
+
+    return nil
+}
+
+func (lhc *LocalHeaderCache) ListPeers() (plr []PeerItemResponse) {
+    plr = make([]PeerItemResponse,0)
+    for _, p := range lhc.Peers {
+        pir := new(PeerItemResponse)
+        pir.Host = p.hc.host
+        pir.Port = p.hc.port
+        plr = append(plr, *pir)
+    }
+    return plr
+}
+
+func (lhc *LocalHeaderCache) DiscoverPeers(exthost string, extport uint16) (err error) {
+    //should only have a single goroutine running discovery at a time
+    lhc.discoverPeersMutex.Lock()
+    if lhc.discoverPeersInProgress {
+        lhc.discoverPeersMutex.Unlock()
+        return nil
+    }
+    lhc.discoverPeersInProgress = true
+    lhc.discoverPeersMutex.Unlock()
+    defer func(lhc *LocalHeaderCache) {
+        lhc.discoverPeersInProgress = false
+    }(lhc)
+    
+    now := uint32(time.Now().Unix())
+
+    for _, p := range lhc.Peers {
+        if (p.lastGetPeers + lhcPeerInfoMinDelay) < now {
+            if p.hc.getPeerInfo() == nil {
+                p.lastGetPeers = now
+        
+                needsLocal := true
+                for _, remote := range p.hc.PeerInfo {
+                    remoteNew := true
+                    for _, local := range lhc.Peers {
+                        if (local.hc.host == remote.Host) && (local.hc.port == remote.Port) {
+                            remoteNew = false
+                            break
+                        }
+                    }
+                    if (remote.Host == exthost) && (remote.Port == extport) {
+                        needsLocal = false
+                    } else {
+                        if remoteNew {
+                            lhc.addPeer(remote.Host, remote.Port)
+                        }
+                    }
+                }
+                if needsLocal {
+                    p.hc.postPeerInfo(exthost, extport)
+                }
+            }
+        }
+    }
 
     return nil
 }

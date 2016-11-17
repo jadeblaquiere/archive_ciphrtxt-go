@@ -47,6 +47,7 @@ import (
 
 const apiStatus string = "api/v2/status/"
 const apiTime string = "api/v2/time/"
+const apiPeer string = "api/v2/peers/"
 const apiHeadersSince string = "api/v2/headers?since="
 const apiMessagesDownload string = "api/v2/messages/"
 
@@ -55,16 +56,30 @@ const refreshMinDelay = 10
 // {"pubkey": "030b5a7b432ec22920e20063cb16eb70dcb62dfef28d15eb19c1efeec35400b34b", "storage": {"max_file_size": 268435456, "capacity": 137438953472, "messages": 6252, "used": 17828492}}
 
 type StatusStorageResponse struct {
-    Messages int `json:"messages"`
-    Maxfilesize int `json:"max_file_size"`
     Capacity int `json:"capacity"`
+    Headers int `json:"headers"`
+    Maxfilesize int `json:"max_file_size"`
+    Messages int `json:"messages"`
     Used int `json:"used"`
 }
 
+type StatusNetworkResponse struct {
+    Host string `json:"host"`
+    MSGPort int `json:"message_service_port"`
+    TOKPort int `json:"token_service_port"`
+}
+
+type StatusSectorResponse struct {
+    Ring uint `json:"ring"`
+    Start int `json:"start"`
+}
+
 type StatusResponse struct {
+    Network StatusNetworkResponse `json:"network"`
     Pubkey string `json:"pubkey"`
+    Sector  StatusSectorResponse `json:"sector"`
+    Storage StatusStorageResponse `json:"storage"`
     Version string `json:"version"`
-    Status StatusStorageResponse `json:"storage"`
 }
 
 type TimeResponse struct {
@@ -84,16 +99,25 @@ type MessageUploadResponse struct {
     Servertime uint32 `json:"servertime"`
 }
 
+type PeerItemResponse struct {
+    Host string `json:"host"`
+    Port uint16 `json:"port"`
+}
+
 type HeaderCache struct {
+    host string
+    port uint16
     baseurl string
     db *leveldb.DB
     syncMutex sync.Mutex
+    syncInProgress bool
     status StatusResponse
     serverTime uint32
     lastRefreshServer uint32
     lastRefreshLocal uint32
     Count int
     NetworkErrors int
+    PeerInfo []PeerItemResponse
 }
 
 // NOTE : if dbpath is empty ("") header cache will be in-memory only
@@ -101,6 +125,8 @@ type HeaderCache struct {
 func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, err error) {
     hc = new(HeaderCache)
     hc.baseurl = fmt.Sprintf("http://%s:%d/", host, port)
+    hc.host = host
+    hc.port = port
     
     c := &http.Client{
         Timeout: time.Second * 10,
@@ -108,30 +134,36 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
     
     res, err := c.Get(hc.baseurl + apiStatus)
     if err != nil {
+        fmt.Printf("whoops1", err)
         return nil, err
     }
     
     body, err := ioutil.ReadAll(res.Body)
     if err != nil {
+        fmt.Printf("whoops2", err)
         return nil, err
     }
     
     err = json.Unmarshal(body, &hc.status)
     if err != nil {
+        fmt.Printf("failed to marshall result\n", err)
         return nil, err
     }
     
     if len(dbpath) == 0 {
+        fmt.Printf("whoops3", err)
         return nil, errors.New("refusing to open empty db path")
     }
     
     hc.db, err = leveldb.OpenFile(dbpath, nil)
     if err != nil {
+        fmt.Printf("whoops4", err)
         return nil, err
     }
     
     err = hc.recount()
     if err != nil {
+        fmt.Printf("whoops5", err)
         return nil, err
     }
     
@@ -452,15 +484,17 @@ func (hc *HeaderCache) Sync() (err error) {
     
     //should only have a single goroutine sync'ing at a time
     hc.syncMutex.Lock()
-    defer hc.syncMutex.Unlock()
-    
-    now = uint32(time.Now().Unix())
-    
-    if (hc.lastRefreshLocal + refreshMinDelay) > now {
+    if hc.syncInProgress {
+        hc.syncMutex.Unlock()
         return nil
     }
+    hc.syncInProgress = true
+    hc.syncMutex.Unlock()
+    defer func(hc *HeaderCache) {
+        hc.syncInProgress = false
+    }(hc)
     
-    fmt.Printf("MessageStore.Sync: %s sync @ now, last, next = %d, %d, %d\n", hc.baseurl, now, hc.lastRefreshLocal, (hc.lastRefreshLocal + refreshMinDelay))
+    fmt.Printf("HeaderCache.Sync: %s sync @ now, last, next = %d, %d, %d\n", hc.baseurl, now, hc.lastRefreshLocal, (hc.lastRefreshLocal + refreshMinDelay))
     
     serverTime, err := hc.getTime()
     if err != nil {
@@ -482,7 +516,8 @@ func (hc *HeaderCache) Sync() (err error) {
     for _, mh := range mhdrs {
         insert, err := hc.Insert(&mh)
         if err != nil {
-            return err
+            fmt.Printf("hc.Insert failed: %s\n", err)
+            continue
         }
         if insert {
             insCount += 1
@@ -496,8 +531,6 @@ func (hc *HeaderCache) Sync() (err error) {
 
     return nil
 }
-
-// 
 
 func (hc *HeaderCache) tryDownloadMessage(I []byte, recvpath string) (m *MessageFile, err error) {
     c := &http.Client{
@@ -531,4 +564,71 @@ func (hc *HeaderCache) tryDownloadMessage(I []byte, recvpath string) (m *Message
     }
     
     return m, nil
+}
+
+func (hc *HeaderCache) getPeerInfo() (err error) {
+    var plr []PeerItemResponse
+
+    c := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    
+    res, err := c.Get(hc.baseurl + apiPeer)
+    if err != nil {
+        hc.NetworkErrors += 1
+        return err
+    }
+    
+    body, err := ioutil.ReadAll(res.Body)
+    if err != nil {
+        hc.NetworkErrors += 1
+        return err
+    }
+    
+    hc.NetworkErrors = 0
+    err = json.Unmarshal(body, &plr)
+    if err != nil {
+        return err
+    }
+    
+    fmt.Printf("Host %s returned %d peers:\n", hc.baseurl, len(plr))
+    for _, p := range plr {
+        fmt.Printf("peer host = %s, port = %d\n",p.Host, p.Port)
+    }
+    
+    hc.PeerInfo = plr
+    return nil
+}
+
+func (hc *HeaderCache) postPeerInfo(host string, port uint16) (err error) {
+    var pir PeerItemResponse
+    
+    pir.Host = host
+    pir.Port = port
+    
+    body, err := json.Marshal(&pir)
+    if err != nil {
+        return err
+    }
+    fmt.Printf("body for peer info post:\n%s\n\n", string(body))
+
+    c := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    
+    res, err := c.Post(hc.baseurl + apiPeer, "application/json", bytes.NewBuffer(body))
+    if err != nil {
+        hc.NetworkErrors += 1
+        return err
+    }
+    
+    body, err = ioutil.ReadAll(res.Body)
+    if err != nil {
+        hc.NetworkErrors += 1
+        return err
+    }
+    
+    fmt.Printf("POST Complete\n")
+    
+    return nil
 }
