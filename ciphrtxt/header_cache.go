@@ -647,6 +647,7 @@ func (hc *HeaderCache) RefreshStatus() (status string) {
     status += time.Unix(int64(hc.lastRefreshLocal),0).UTC().Format("2006-01-02 15:04:05")
     status += fmt.Sprintf(" (-%04ds) ", (uint32(time.Now().Unix())-hc.lastRefreshLocal))
     status += fmt.Sprintf(" skew l-r: %d    ", (int(hc.lastRefreshLocal)-int(hc.lastRefreshServer)))
+    status += fmt.Sprintf("h: %d ",hc.Count)
     status += hc.baseurl + "\n"
     return status
 }

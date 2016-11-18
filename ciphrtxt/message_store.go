@@ -625,7 +625,7 @@ func (ms *MessageStore) RefreshStatus() (status string) {
         status += "   MS: refresh "
     }
     status += time.Unix(int64(ms.lastRefresh),0).UTC().Format("2006-01-02 15:04:05")
-    status += fmt.Sprintf(" (-%04ds)\n", (uint32(time.Now().Unix())-ms.lastRefresh))
+    status += fmt.Sprintf(" (-%04ds) h: %d\n", (uint32(time.Now().Unix())-ms.lastRefresh), ms.Count)
     status += ms.LHC.RefreshStatus()
     return status
 }

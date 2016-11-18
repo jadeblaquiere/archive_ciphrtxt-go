@@ -619,6 +619,7 @@ func (lhc *LocalHeaderCache) RefreshStatus() (status string) {
     }
     status += time.Unix(int64(lhc.lastRefresh),0).UTC().Format("2006-01-02 15:04:05")
     status += fmt.Sprintf(" (-%04ds) ", (uint32(time.Now().Unix())-lhc.lastRefresh))
+    status += fmt.Sprintf("h: %d ", lhc.Count)
     status += "\n  "
     if lhc.discoverPeersInProgress {
         status += "*  LH: discover "
