@@ -127,7 +127,7 @@ func main() {
             time.Sleep(time.Second * time.Duration(interval/2))
             //fmt.Printf("msgstore.refresh calling DiscoverPeers()\n")
             ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
-            //fmt.Printf("Refresh Status :%s:\n%s\n", time.Now().UTC().Format("2006-01-02 15:04:05"), ms.RefreshStatus())
+            fmt.Printf("Refresh Status :%s:\n%s\n", time.Now().UTC().Format("2006-01-02 15:04:05"), ms.RefreshStatus())
         }
     } (ms, 60)
     
@@ -146,6 +146,7 @@ func main() {
     api.Get("/api/v2/time", get_time)
     api.Get("/index", index)
     api.Get("/index.html", index)
+    api.Get("/peers.html", peers)
     api.StaticWeb("/static", "./static", 1)
     listenString := ":" + strconv.Itoa(*configListenPort)
     api.Listen(listenString)
@@ -165,6 +166,17 @@ func index(ctx *iris.Context){
         msgs = append(msgs, *(m.RawMessageHeader.JSON()))
     }
     ctx.Render("index.html", struct { TimeMinus5 int; Messages []ciphrtxt.MessageHeaderJSON }{ TimeMinus5: int(time.Now().Unix() - 300), Messages: msgs })
+}
+
+func peers(ctx *iris.Context){
+    peerInfo := make([]ciphrtxt.PeerJSON, 0)
+    now := uint32(time.Now().Unix())
+    lhc := ms.LHC
+    for _, p := range lhc.Peers {
+        pi := p.HC.GetPeerStatsJSON()
+        peerInfo = append(peerInfo, *pi)
+    }
+    ctx.Render("peers.html", struct { TimeMinus5 int; Peers []ciphrtxt.PeerJSON }{ TimeMinus5: int(now - 300), Peers: peerInfo })
 }
 
 func get_headers(ctx *iris.Context){

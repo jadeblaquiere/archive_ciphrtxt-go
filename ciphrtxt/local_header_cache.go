@@ -47,7 +47,7 @@ const lhcPeerConsecutiveErrorMax = 20
 const lhcPeerInfoMinDelay = 300
 
 type peerCache struct {
-    hc    *HeaderCache
+    HC    *HeaderCache
     lastRefresh   uint32
     lastGetPeers  uint32
 }
@@ -118,9 +118,9 @@ func (lhc *LocalHeaderCache) recount() (err error) {
 
 func (lhc *LocalHeaderCache) Close() {
     for _, p := range lhc.Peers {
-        if p.hc != nil {
-            p.hc.Close()
-            p.hc = nil
+        if p.HC != nil {
+            p.HC.Close()
+            p.HC = nil
         }
     }
     
@@ -431,18 +431,18 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
     ordinal := rand.Perm(nPeers)
     //for i := 0 ; i < nPeers ; i++ {
     //    p := lhc.Peers[ordinal[i]]
-    //    fmt.Printf("%d : %s:%d\n", ordinal[i], p.hc.host, p.hc.port)
+    //    fmt.Printf("%d : %s:%d\n", ordinal[i], p.HC.host, p.HC.port)
     //}
     //fmt.Printf("\n")
     for i := 0; i < nPeers ; i++ {
         p := lhc.Peers[ordinal[i]]
         
-        p.hc.Sync()
+        p.HC.Sync()
         
-        lastRefreshPeer := p.hc.lastRefreshServer
+        lastRefreshPeer := p.HC.lastRefreshServer
         
         if lastRefreshPeer > p.lastRefresh {
-            mhdrs, err := p.hc.FindSince(p.lastRefresh)
+            mhdrs, err := p.HC.FindSince(p.lastRefresh)
             if err != nil { return err }
     
             insCount := int(0)
@@ -465,10 +465,10 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
     
     newPeers := make([]*peerCache, 0, len(lhc.Peers))
     for _, p := range lhc.Peers {
-        if p.hc.NetworkErrors < lhcPeerConsecutiveErrorMax {
+        if p.HC.NetworkErrors < lhcPeerConsecutiveErrorMax {
             newPeers = append(newPeers, p)
         } else {
-            fmt.Printf("LocalHeaderCache: dropping peer %s (error count too high)\n", p.hc.baseurl)
+            fmt.Printf("LocalHeaderCache: dropping peer %s (error count too high)\n", p.HC.baseurl)
         }
     }
     
@@ -499,7 +499,7 @@ func (lhc *LocalHeaderCache) AddPeer(host string, port uint16) {
 
 func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
     for _, p := range lhc.Peers {
-        if (p.hc.host == host) && (p.hc.port == port) {
+        if (p.HC.host == host) && (p.HC.port == port) {
             return nil
         }
     }
@@ -525,7 +525,7 @@ func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
         return err
     }
     
-    pc.hc = rhc
+    pc.HC = rhc
     pc.lastRefresh = lastRefresh
     
     lhc.Peers = append(lhc.Peers, pc)
@@ -555,8 +555,8 @@ func (lhc *LocalHeaderCache) ListPeers() (plr []PeerItemResponse) {
     plr = make([]PeerItemResponse,0)
     for _, p := range lhc.Peers {
         pir := new(PeerItemResponse)
-        pir.Host = p.hc.host
-        pir.Port = p.hc.port
+        pir.Host = p.HC.host
+        pir.Port = p.HC.port
         plr = append(plr, *pir)
     }
     return plr
@@ -579,14 +579,14 @@ func (lhc *LocalHeaderCache) DiscoverPeers(exthost string, extport uint16) (err 
 
     for _, p := range lhc.Peers {
         if (p.lastGetPeers + lhcPeerInfoMinDelay) < now {
-            if p.hc.getPeerInfo() == nil {
+            if p.HC.getPeerInfo() == nil {
                 p.lastGetPeers = now
         
                 needsLocal := true
-                for _, remote := range p.hc.PeerInfo {
+                for _, remote := range p.HC.PeerInfo {
                     remoteNew := true
                     for _, local := range lhc.Peers {
-                        if (local.hc.host == remote.Host) && (local.hc.port == remote.Port) {
+                        if (local.HC.host == remote.Host) && (local.HC.port == remote.Port) {
                             remoteNew = false
                             break
                         }
@@ -600,7 +600,7 @@ func (lhc *LocalHeaderCache) DiscoverPeers(exthost string, extport uint16) (err 
                     }
                 }
                 if needsLocal {
-                    p.hc.postPeerInfo(exthost, extport)
+                    p.HC.postPeerInfo(exthost, extport)
                 }
             }
         }
@@ -630,7 +630,7 @@ func (lhc *LocalHeaderCache) RefreshStatus() (status string) {
     status += time.Unix(int64(lhc.lastPeerSync),0).UTC().Format("2006-01-02 15:04:05")
     status += fmt.Sprintf(" (-%04ds)\n", (uint32(time.Now().Unix())-lhc.lastPeerSync))
     for _, p := range lhc.Peers {
-        status += p.hc.RefreshStatus()
+        status += p.HC.RefreshStatus()
     }
     return status
 }

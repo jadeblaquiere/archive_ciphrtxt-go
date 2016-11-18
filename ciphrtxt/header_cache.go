@@ -651,3 +651,25 @@ func (hc *HeaderCache) RefreshStatus() (status string) {
     status += hc.baseurl + "\n"
     return status
 }
+
+type PeerJSON struct {
+    Host string `json:"host"`
+    Port uint16 `json:"port"`
+    URL string `json:"url"`
+    Headers int `json:"headers"`
+    Messages int `json:"messages"`
+    Start int `json:"start"`
+    Ring int `json:"ring"`
+}
+
+func (hc *HeaderCache) GetPeerStatsJSON() (stats *PeerJSON) {
+    pi := new(PeerJSON)
+    pi.Host = hc.host
+    pi.Port = hc.port
+    pi.URL = "http://" + hc.host + ":" + strconv.Itoa(int(hc.port)) + "/"
+    pi.Headers = hc.Count
+    pi.Messages = hc.status.Storage.Messages
+    pi.Start = hc.status.Sector.Start
+    pi.Ring = int(hc.status.Sector.Ring)
+    return pi
+}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="static/css/main.css">
+<title>Message Store Console</title>
+</head>
+<body>
+<div class="jumbotron">
+    <div class="container">
+        <h1>Go Msgstore Console</h1>
+        <h3><a href="/">messages</a></h3>
+        <h3><a href="/api/v2/status">status api</a></h3>
+        <h3>messages api <a href="/api/v2/messages">all</a> <a href="/api/v2/messages?since={{.TimeMinus5}}">last 5 mins</a></h3>
+        <h3>headers api <a href="/api/v2/headers">all</a> <a href="/api/v2/headers?since={{.TimeMinus5}}">last 5 mins</a></h3>
+        <h3><a href="/api/v2/peers">peer list api</a> <a href="/peers.html">peers html</a></h3>
+        <h3><a href="/api/v2/time">time api</a></h3>
+    </div>
+</div>
+<div class="quick_upload">
+    <div class="container">
+        <h2>Quick Upload</h2>
+        <form action="/api/v2/messages" method="post" enctype="multipart/form-data">
+            <div class="form-inline">
+                <div class="form-group">
+                    <ul>
+                        <li>File:<input type="file" name="message"></li>
+                    </ul>
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary">Upload file</button>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="message_inventory">
+    <div class="container">
+        <h2>Peers</h2>
+        <table>
+            <tr>
+                <th>Hostname</th>
+                <th>Port</th>
+                <th>URL</th>
+                <th>Headers</th>
+                <th>Messages</th>
+                <th>Start</th>
+                <th>Ring</th>
+            </tr>
+            {{range .Peers}}
+            <tr>
+                <td>{{.Host}}</td>
+                <td>{{.Port}}</td>
+                <td><a href="{{.URL}}">{{.URL}}</a></td>
+                <td>{{.Headers}}</td>
+                <td>{{.Messages}}</td>
+                <td>{{.Start}}</td>
+                <td>{{.Ring}}</td>
+            </tr>
+            {{end}}
+        </table>
+    </div>
+</div>
+</body>
+</html>

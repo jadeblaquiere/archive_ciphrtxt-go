@@ -147,7 +147,7 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
                     //fmt.Printf("GR%d: seeking %s from %d peers\n",gr,hex.EncodeToString(I), nPeers)
                     ordinal := rand.Perm(nPeers)
                     for i := 0; i < nPeers; i++ {
-                        phc := ms.LHC.Peers[ordinal[i]].hc
+                        phc := ms.LHC.Peers[ordinal[i]].HC
                         h, _ := phc.FindByI(I)
                         if h == nil {
                             continue
