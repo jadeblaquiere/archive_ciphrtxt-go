@@ -139,7 +139,7 @@ func (lhc *LocalHeaderCache) Insert(h *RawMessageHeader) (insert bool, err error
     _, err = lhc.db.Get(dbk.I, nil)
     if err == nil { return false, nil }
     
-    value := []byte(h.Serialize())
+    value := append([]byte(h.Serialize())[:], serializeUint32(servertime)[:]...)
     
     batch := new(leveldb.Batch)
     batch.Put(dbk.date, value)
@@ -159,7 +159,7 @@ func (lhc *LocalHeaderCache) Remove(h *RawMessageHeader) (err error) {
     if err != nil {
         return err
     }
-    servertime := deserializeUint32(value[MessageHeaderLengthV2:MessageHeaderLengthV2+4])
+    servertime := deserializeUint32(value[MessageHeaderLengthB64V2:MessageHeaderLengthB64V2+4])
     dbk, err := h.dbKeys(servertime)
     if err != nil {
         return err
@@ -209,7 +209,7 @@ func (lhc *LocalHeaderCache) FindSince (tstamp uint32) (hdrs []RawMessageHeader,
     for iter.Next() {
         h := new(RawMessageHeader)
         if h.Deserialize(string(iter.Value())) == nil {
-            return nil, errors.New("error parsing message")
+            return nil, errors.New("error parsing message header")
         }
         hdrs = append(hdrs, *h)
     }
@@ -292,7 +292,7 @@ func (lhc *LocalHeaderCache) findSector (seg ShardSector) (hdrs []RawMessageHead
         for iter.Next() {
             h := new(RawMessageHeader)
             if h.Deserialize(string(iter.Value())) == nil {
-                return nil, errors.New("error parsing message")
+                return nil, errors.New("error parsing message header")
             }
             hdrs = append(hdrs, *h)
         }
@@ -324,7 +324,7 @@ func (lhc *LocalHeaderCache) FindExpiringAfter (tstamp uint32) (hdrs []RawMessag
     for iter.Next() {
         h := new(RawMessageHeader)
         if h.Deserialize(string(iter.Value())) == nil {
-            return nil, errors.New("error parsing message")
+            return nil, errors.New("error parsing message header")
         }
         hdrs = append(hdrs, *h)
     }
@@ -356,13 +356,17 @@ func (lhc *LocalHeaderCache) pruneExpired() (err error) {
         
     for iter.Next() {
         value := iter.Value()
-        if hdr.Deserialize(string(value)) == nil {
-            return errors.New("unable to parse database value")
+        if hdr.Deserialize(string(value[0:len(value)-4])) == nil {
+            //return errors.New("unable to parse database value")
+            fmt.Printf("LHC: unable to parse: %s\n", string(value[:MessageHeaderLengthB64V2]))
+            continue
         }
-        servertime := deserializeUint32(value[MessageHeaderLengthV2:MessageHeaderLengthV2+4])
+        servertime := deserializeUint32(value[len(value)-4:len(value)])
         dbk, err := hdr.dbKeys(servertime)
         if err != nil {
-            return err
+            //return err
+            fmt.Printf("LHC: failed to generate dbkeys\n")
+            continue
         }
         batch.Delete(dbk.date)
         batch.Delete(dbk.servertime)

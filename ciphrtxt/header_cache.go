@@ -276,7 +276,7 @@ func (hc *HeaderCache) Remove(h *RawMessageHeader) (err error) {
     if err != nil {
         return err
     }
-    servertime := deserializeUint32(value[MessageHeaderLengthV2:MessageHeaderLengthV2+4])
+    servertime := deserializeUint32(value[MessageHeaderLengthB64V2:MessageHeaderLengthB64V2+4])
     dbk, err := h.dbKeys(servertime)
     if err != nil {
         return err
@@ -449,13 +449,17 @@ func (hc *HeaderCache) pruneExpired() (err error) {
         
     for iter.Next() {
         value := iter.Value()
-        if hdr.Deserialize(string(value)) == nil {
-            return errors.New("unable to parse database value")
+        if hdr.Deserialize(string(value[0:len(value)-4])) == nil {
+            //return errors.New("unable to parse database value")
+            fmt.Printf("HC(%s): unable to parse: %s\n", hc.baseurl, string(value[:MessageHeaderLengthB64V2]))
+            continue
         }
-        servertime := deserializeUint32(value[MessageHeaderLengthV2:MessageHeaderLengthV2+4])
+        servertime := deserializeUint32(value[len(value)-4:len(value)])
         dbk, err := hdr.dbKeys(servertime)
         if err != nil {
-            return err
+            //return err
+            fmt.Printf("HC(%s): failed to generate dbkeys\n", hc.baseurl)
+            continue
         }
         batch.Delete(dbk.date)
         batch.Delete(dbk.servertime)
@@ -468,7 +472,7 @@ func (hc *HeaderCache) pruneExpired() (err error) {
     err = hc.db.Write(batch, nil)
     if err == nil {
         hc.Count -= delCount
-        fmt.Printf("dropping %d message headers\n", delCount)
+        fmt.Printf("HC(%s) dropping %d message headers\n", hc.baseurl, delCount)
     }
     
     return err

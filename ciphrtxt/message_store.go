@@ -143,8 +143,8 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
                 
                 select {
                 case I := <- Iqueue:
-                    //mt.Printf("GR%d: seeking %s\n",gr,hex.EncodeToString(I))
                     nPeers := len(ms.LHC.Peers)
+                    //fmt.Printf("GR%d: seeking %s from %d peers\n",gr,hex.EncodeToString(I), nPeers)
                     ordinal := rand.Perm(nPeers)
                     for i := 0; i < nPeers; i++ {
                         phc := ms.LHC.Peers[ordinal[i]].hc

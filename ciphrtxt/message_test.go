@@ -136,8 +136,8 @@ func TestOpenMessageStore (t *testing.T) {
     
     ms.pruneExpired()
     
-    lhc.AddPeer("indigo.ciphrtxt.com",7754)
-    lhc.AddPeer("violet.ciphrtxt.com",7754)
+    lhc.addPeer("indigo.ciphrtxt.com",7754)
+    lhc.addPeer("violet.ciphrtxt.com",7754)
     
     lhc.Sync()
     
