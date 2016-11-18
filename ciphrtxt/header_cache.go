@@ -134,36 +134,36 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
     
     res, err := c.Get(hc.baseurl + apiStatus)
     if err != nil {
-        fmt.Printf("whoops1", err)
+        //fmt.Printf("whoops1", err)
         return nil, err
     }
     
     body, err := ioutil.ReadAll(res.Body)
     if err != nil {
-        fmt.Printf("whoops2", err)
+        //fmt.Printf("whoops2", err)
         return nil, err
     }
     
     err = json.Unmarshal(body, &hc.status)
     if err != nil {
-        fmt.Printf("failed to marshall result\n", err)
+        //fmt.Printf("failed to marshall result\n", err)
         return nil, err
     }
     
     if len(dbpath) == 0 {
-        fmt.Printf("whoops3", err)
+        //fmt.Printf("whoops3", err)
         return nil, errors.New("refusing to open empty db path")
     }
     
     hc.db, err = leveldb.OpenFile(dbpath, nil)
     if err != nil {
-        fmt.Printf("whoops4", err)
+        //fmt.Printf("whoops4", err)
         return nil, err
     }
     
     err = hc.recount()
     if err != nil {
-        fmt.Printf("whoops5", err)
+        //fmt.Printf("whoops5", err)
         return nil, err
     }
     
@@ -472,7 +472,7 @@ func (hc *HeaderCache) pruneExpired() (err error) {
     err = hc.db.Write(batch, nil)
     if err == nil {
         hc.Count -= delCount
-        fmt.Printf("HC(%s) dropping %d message headers\n", hc.baseurl, delCount)
+        //fmt.Printf("HC(%s) dropping %d message headers\n", hc.baseurl, delCount)
     }
     
     return err
@@ -498,7 +498,7 @@ func (hc *HeaderCache) Sync() (err error) {
         hc.syncInProgress = false
     }(hc)
     
-    fmt.Printf("HeaderCache.Sync: %s sync @ now, last, next = %d, %d, %d\n", hc.baseurl, now, hc.lastRefreshLocal, (hc.lastRefreshLocal + refreshMinDelay))
+    //fmt.Printf("HeaderCache.Sync: %s sync @ now, last, next = %d, %d, %d\n", hc.baseurl, now, hc.lastRefreshLocal, (hc.lastRefreshLocal + refreshMinDelay))
     
     serverTime, err := hc.getTime()
     if err != nil {
@@ -531,7 +531,7 @@ func (hc *HeaderCache) Sync() (err error) {
     hc.lastRefreshServer = serverTime
     hc.lastRefreshLocal = now
 
-    fmt.Printf("insert %d message headers\n", insCount)
+    //fmt.Printf("insert %d message headers\n", insCount)
 
     return nil
 }
@@ -595,10 +595,10 @@ func (hc *HeaderCache) getPeerInfo() (err error) {
         return err
     }
     
-    fmt.Printf("Host %s returned %d peers:\n", hc.baseurl, len(plr))
-    for _, p := range plr {
-        fmt.Printf("peer host = %s, port = %d\n",p.Host, p.Port)
-    }
+    //fmt.Printf("Host %s returned %d peers:\n", hc.baseurl, len(plr))
+    //for _, p := range plr {
+    //    fmt.Printf("peer host = %s, port = %d\n",p.Host, p.Port)
+    //}
     
     hc.PeerInfo = plr
     return nil
@@ -614,7 +614,7 @@ func (hc *HeaderCache) postPeerInfo(host string, port uint16) (err error) {
     if err != nil {
         return err
     }
-    fmt.Printf("body for peer info post:\n%s\n\n", string(body))
+    //fmt.Printf("body for peer info post:\n%s\n\n", string(body))
 
     c := &http.Client{
         Timeout: time.Second * 10,
@@ -632,7 +632,7 @@ func (hc *HeaderCache) postPeerInfo(host string, port uint16) (err error) {
         return err
     }
     
-    fmt.Printf("POST Complete\n")
+    //fmt.Printf("POST Complete\n")
     
     return nil
 }

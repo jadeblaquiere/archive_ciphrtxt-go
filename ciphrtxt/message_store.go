@@ -157,7 +157,7 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
                         //fmt.Printf("GR%d: pulling %s from %s as %s\n",gr,hex.EncodeToString(I), phc.baseurl, recvpath)
                         m, err := phc.tryDownloadMessage(I, recvpath)
                         if err != nil {
-                            fmt.Printf("GR%d: download error can't fetch %s from %s Error\n", gr, hex.EncodeToString(I), phc.baseurl, err)
+                            fmt.Printf("GR%d: download error can't fetch %s from %s Error: %s\n", gr, hex.EncodeToString(I), phc.baseurl, err)
                             continue
                         }
                         Ihex := hex.EncodeToString(I)
@@ -218,16 +218,17 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
             }
             _, err = ms.db.Get(dbkey, nil)
             if err != nil {
-                fmt.Printf("%s not found in db, inserting\n", f.Name())
+                //fmt.Printf("%s not found in db, inserting\n", f.Name())
                 fpath := p + "/" + f.Name()
-                ins, err := ms.InsertFile(fpath)
+                //ins, err := ms.InsertFile(fpath)
+                _, err := ms.InsertFile(fpath)
                 if err != nil {
                     fmt.Printf("Failed to insert message %s\n", fpath)
                     continue
                 }
-                if ins != 0 {
-                    fmt.Printf("inserted %s into db\n", f.Name())
-                }
+                //if ins != 0 {
+                //    fmt.Printf("inserted %s into db\n", f.Name())
+                //}
             }
         }
     }
@@ -449,7 +450,7 @@ func (ms *MessageStore) pruneExpired() (err error) {
     }
     
     ms.Count -= delCount
-    fmt.Printf("MessageStore: dropped %d messages from db\n", delCount)
+    //fmt.Printf("MessageStore: dropped %d messages from db\n", delCount)
     
     delCount = 0
     for _, f := range filesToRemove {
@@ -459,7 +460,7 @@ func (ms *MessageStore) pruneExpired() (err error) {
         }
     }
     
-    fmt.Printf("MessageStore: removed %d messages from filesystem\n", delCount)
+    //fmt.Printf("MessageStore: removed %d messages from filesystem\n", delCount)
     
     return nil
 }
@@ -489,7 +490,7 @@ func (ms *MessageStore) syncSector(sector ShardSector) (err error) {
         return err
     }
     
-    fmt.Printf("MessageStore.syncSector: %d headers in scope\n", len(segHeaders))
+    //fmt.Printf("MessageStore.syncSector: %d headers in scope\n", len(segHeaders))
     
     for _, s := range segHeaders {
         if s.version == "0100" {
@@ -516,7 +517,7 @@ func (ms *MessageStore) refreshSector(sector ShardSector, since uint32) (err err
         return err
     }
     
-    fmt.Printf("")
+    //fmt.Printf("")
     
     for _, s := range segHeaders {
         if s.version == "0100" {

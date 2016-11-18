@@ -379,7 +379,7 @@ func (lhc *LocalHeaderCache) pruneExpired() (err error) {
     err = lhc.db.Write(batch, nil)
     if err == nil {
         lhc.Count -= delCount
-        fmt.Printf("LocalHeaderCache: dropping %d message headers\n", delCount)
+        //fmt.Printf("LocalHeaderCache: dropping %d message headers\n", delCount)
     }
     
     return err
@@ -429,11 +429,11 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
     // and processing within sync is serialized by a mutex so the list can't shrink during the loop
     nPeers := len(lhc.Peers)
     ordinal := rand.Perm(nPeers)
-    for i := 0 ; i < nPeers ; i++ {
-        p := lhc.Peers[ordinal[i]]
-        fmt.Printf("%d : %s:%d\n", ordinal[i], p.hc.host, p.hc.port)
-    }
-    fmt.Printf("\n")
+    //for i := 0 ; i < nPeers ; i++ {
+    //    p := lhc.Peers[ordinal[i]]
+    //    fmt.Printf("%d : %s:%d\n", ordinal[i], p.hc.host, p.hc.port)
+    //}
+    //fmt.Printf("\n")
     for i := 0; i < nPeers ; i++ {
         p := lhc.Peers[ordinal[i]]
         
@@ -459,7 +459,7 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
             
             p.lastRefresh = lastRefreshPeer
             
-            fmt.Printf("LocalHeaderCache: inserted %d message headers\n", insCount)    
+            //fmt.Printf("LocalHeaderCache: inserted %d message headers\n", insCount)    
         }
     }
     
@@ -477,9 +477,10 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
     lhc.lastRefresh = now
 
     lhc.Count += insCount
-    fmt.Printf("LocalHeaderCache: insert %d message headers\n", insCount)
     
-    fmt.Printf("LocalHeaderCache: %d active message headers\n", lhc.Count)
+    //fmt.Printf("LocalHeaderCache: insert %d message headers\n", insCount)
+    
+    //fmt.Printf("LocalHeaderCache: %d active message headers\n", lhc.Count)
 
     return nil
 }
@@ -541,11 +542,11 @@ func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
         }
     }
     
-    fmt.Printf("LocalHeaderCache: inserted %d message headers\n", insCount)
+    //fmt.Printf("LocalHeaderCache: inserted %d message headers\n", insCount)
 
     //lhc.recount()
     
-    fmt.Printf("LocalHeaderCache: %d active message headers\n", lhc.Count)
+    //fmt.Printf("LocalHeaderCache: %d active message headers\n", lhc.Count)
 
     return nil
 }

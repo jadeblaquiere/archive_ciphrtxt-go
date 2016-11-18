@@ -119,15 +119,15 @@ func main() {
 
 	go func(ms *ciphrtxt.MessageStore, interval int) {
         for {
-            fmt.Printf("msgstore.refresh calling Sleep()\n")
+            //fmt.Printf("msgstore.refresh calling Sleep()\n")
             time.Sleep(time.Second * time.Duration(interval/2))
-            fmt.Printf("msgstore.refresh calling Sync()\n")
+            //fmt.Printf("msgstore.refresh calling Sync()\n")
             ms.Sync()
-            fmt.Printf("msgstore.refresh calling Sleep()\n")
+            //fmt.Printf("msgstore.refresh calling Sleep()\n")
             time.Sleep(time.Second * time.Duration(interval/2))
-            fmt.Printf("msgstore.refresh calling DiscoverPeers()\n")
+            //fmt.Printf("msgstore.refresh calling DiscoverPeers()\n")
             ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
-            fmt.Printf("Refresh Status :%s:\n%s\n", time.Now().UTC().Format("2006-01-02 15:04:05"), ms.RefreshStatus())
+            //fmt.Printf("Refresh Status :%s:\n%s\n", time.Now().UTC().Format("2006-01-02 15:04:05"), ms.RefreshStatus())
         }
     } (ms, 60)
     
@@ -169,11 +169,11 @@ func index(ctx *iris.Context){
 
 func get_headers(ctx *iris.Context){
     since, err := ctx.URLParamInt("since")
-    if err == nil {
-        fmt.Printf("since = %d\n", since)
-    } else {
+    if err != nil {
         since = 0
-    }
+    } //else {
+    //    fmt.Printf("GetHeaders: since = %d\n", since)
+    //}
     
     lhc := ms.LHC
     hdrs, err := lhc.FindSince(uint32(since))
@@ -214,11 +214,11 @@ func get_header_info(ctx *iris.Context){
 
 func get_messages(ctx *iris.Context){
     since, err := ctx.URLParamInt("since")
-    if err == nil {
-        fmt.Printf("since = %d\n", since)
-    } else {
+    if err != nil {
         since = 0
-    }
+    } //else {
+    //    fmt.Printf("since = %d\n", since)
+    //}
     
     msgs, err := ms.FindSince(uint32(since))
     if err != nil {
