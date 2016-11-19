@@ -581,26 +581,39 @@ func (lhc *LocalHeaderCache) DiscoverPeers(exthost string, extport uint16) (err 
         if (p.lastGetPeers + lhcPeerInfoMinDelay) < now {
             if p.HC.getPeerInfo() == nil {
                 p.lastGetPeers = now
+                
+                fmt.Printf("Updating peer info for HC : %s\n", p.HC.baseurl)
         
                 needsLocal := true
                 for _, remote := range p.HC.PeerInfo {
+                    fmt.Printf("Peer %s has peer %s:%d\n", p.HC.baseurl, remote.Host, remote.Port)
                     remoteNew := true
                     for _, local := range lhc.Peers {
                         if (local.HC.host == remote.Host) && (local.HC.port == remote.Port) {
+                            fmt.Printf("peer %s:%d already in my peer list\n", remote.Host, remote.Port)
                             remoteNew = false
                             break
                         }
                     }
                     if (remote.Host == exthost) && (remote.Port == extport) {
+                        fmt.Printf("remote host is me!\n")
                         needsLocal = false
                     } else {
                         if remoteNew {
-                            lhc.addPeer(remote.Host, remote.Port)
+                            fmt.Printf("trying to add host")
+                            err = lhc.addPeer(remote.Host, remote.Port)
+                            if err != nil {
+                                fmt.Printf("error adding peer: %s\n", err)
+                            }
                         }
                     }
                 }
                 if needsLocal {
-                    p.HC.postPeerInfo(exthost, extport)
+                    fmt.Printf("Peer %s doesn't have me in the list, pushing\n", p.HC.baseurl)
+                    err = p.HC.postPeerInfo(exthost, extport)
+                    if err != nil {
+                        fmt.Printf("unable to push myself as peer to %s\n", p.HC.baseurl)
+                    }
                 }
             }
         }
