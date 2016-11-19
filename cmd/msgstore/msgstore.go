@@ -276,7 +276,7 @@ func download_message(ctx *iris.Context){
         return
     }
     
-    m, err := ms.FindByI(I)
+    m, err := ms.FindOrFetchByI(I)
     if err != nil {
         ctx.EmitError(iris.StatusNotFound)
         return
@@ -358,7 +358,7 @@ func get_status(ctx *iris.Context){
     }
 
     r_target := ms.GetCurrentTarget()
-    r_sector := ciphrtxt.StatusSectorResponse {
+    r_sector := ciphrtxt.ShardSector {
         Start: r_target.Start,
         Ring: r_target.Ring,
     }

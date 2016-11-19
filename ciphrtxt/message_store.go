@@ -31,7 +31,7 @@ import (
     //"net/http"
     //"io"
     "io/ioutil"
-    "encoding/binary"
+    //"encoding/binary"
     "encoding/hex"
     //"encoding/json"
     "fmt"
@@ -50,39 +50,7 @@ import (
 
 const allowableClockSkew = (60*15)
 
-const syncMaxGoroutines = 16
-
-// ShardSector defines a sector of coverage from the message space by representing
-// that message space as a circle with 512 potential buckets based on the sign
-// bit and the 8 most-significant bits of the I point value in compressed form. 
-// Start values span from 0x200 to 0x3FF. The number of buckets stored is 
-// 512 >> ring where ring is a value in (0 .. 9). Ring 0 would capture the
-// full 512 bins and ring 9 stores would only capture 1 bin. 
-
-const ShardSectorOuterRing = 9
-
-type ShardSector struct {
-    Start   int
-    Ring    uint
-}
-
-
-func (s *ShardSector) Contains(I []byte) (c bool, err error) {
-    ringsz := 512 >> s.Ring
-    end := s.Start + ringsz
-    
-    i := int(binary.BigEndian.Uint16(I[:2]))
-    if end > 0x400 {
-        if (i < s.Start) && (i >= (end - 0x200)) {
-            return false, nil
-        }
-    } else {
-        if (i < s.Start) || (i >= end) {
-            return false, nil
-        }
-    }
-    return true, nil
-}
+const syncMaxGoroutines = 32
 
 type MessageStore struct {
     rootpath string
@@ -112,6 +80,47 @@ func CheckOrCreateDirectory (filepath string) (err error) {
     return nil
 }
 
+func (ms *MessageStore) fetchMessageFromPeers(I []byte) (m *MessageFile) {
+    nPeers := len(ms.LHC.Peers)
+    ordinal := rand.Perm(nPeers)
+    for i := 0; i < nPeers; i++ {
+        phc := ms.LHC.Peers[ordinal[i]].HC
+        sector := phc.status.Sector
+        if !sector.Contains(I) {
+            continue
+        }
+        h, _ := phc.FindByI(I)
+        if h == nil {
+            fmt.Printf("err: not found\n")
+            continue
+        }
+        tmptime := time.Now().UnixNano()
+        recvpath := ms.rootpath + "/receive/"+ strconv.Itoa(int(tmptime))
+        //fmt.Printf("saving to to %s\n", recvpath)
+        //fmt.Printf("GR%d: pulling %s from %s as %s\n",gr,hex.EncodeToString(I), phc.baseurl, recvpath)
+        m, err := phc.tryDownloadMessage(I, recvpath)
+        if err != nil {
+            fmt.Printf("MS: download error getting %s from %s Error: %s\n", hex.EncodeToString(I), phc.baseurl, err)
+            continue
+        }
+        Ihex := hex.EncodeToString(I)
+        filemove := ms.rootpath + "/store/" + Ihex[:4] + "/" + Ihex
+        //fmt.Printf("moving to %s\n", filemove)
+        err = m.Move(filemove)
+        if err != nil {
+            fmt.Printf("err: move \n")
+            continue
+        }
+        _, err = ms.Insert(m)
+        if err != nil {
+            fmt.Printf("err: Insert\n")
+            continue
+        }
+        return m
+    }
+    return nil
+}
+
 func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms *MessageStore, err error) {
     err = CheckOrCreateDirectory(filepath)
     if err != nil {
@@ -119,6 +128,11 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
     }
     
     err = CheckOrCreateDirectory(filepath + "/store")
+    if err != nil {
+        return nil, err
+    }
+    
+    err = CheckOrCreateDirectory(filepath + "/receive")
     if err != nil {
         return nil, err
     }
@@ -139,41 +153,10 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
             defer ms.syncwg.Done()
             fmt.Printf("in GR %d\n", gr)
             for {
-                var failed bool = true
-                
                 select {
                 case I := <- Iqueue:
-                    nPeers := len(ms.LHC.Peers)
-                    //fmt.Printf("GR%d: seeking %s from %d peers\n",gr,hex.EncodeToString(I), nPeers)
-                    ordinal := rand.Perm(nPeers)
-                    for i := 0; i < nPeers; i++ {
-                        phc := ms.LHC.Peers[ordinal[i]].HC
-                        h, _ := phc.FindByI(I)
-                        if h == nil {
-                            continue
-                        }
-                        tmptime := time.Now().UnixNano()
-                        recvpath := "./receive/"+ strconv.Itoa(int(tmptime))
-                        //fmt.Printf("GR%d: pulling %s from %s as %s\n",gr,hex.EncodeToString(I), phc.baseurl, recvpath)
-                        m, err := phc.tryDownloadMessage(I, recvpath)
-                        if err != nil {
-                            fmt.Printf("GR%d: download error can't fetch %s from %s Error: %s\n", gr, hex.EncodeToString(I), phc.baseurl, err)
-                            continue
-                        }
-                        Ihex := hex.EncodeToString(I)
-                        filemove := "./messages/store/" + Ihex[:4] + "/" + Ihex
-                        err = m.Move(filemove)
-                        if err != nil {
-                            continue
-                        }
-                        _, err = ms.Insert(m)
-                        if err != nil {
-                            continue
-                        }
-                        failed = false
-                        break
-                    }
-                    if failed {
+                    m := ms.fetchMessageFromPeers(I)
+                    if m == nil {
                         h, err := ms.LHC.FindByI(I)
                         if err == nil {
                             if (h.expire + allowableClockSkew) > uint32(time.Now().Unix()) {
@@ -479,6 +462,24 @@ func (ms *MessageStore) FindByI (I []byte) (m *MessageFile, err error) {
     return m, nil
 }
 
+func (ms *MessageStore) FindOrFetchByI (I []byte) (m *MessageFile, err error) {
+    //ms.Sync()
+
+    value, err := ms.db.Get(I, nil)
+    if err == nil {
+        m = new(MessageFile)
+        if m.Deserialize(value) == nil {
+            return nil, errors.New("retreived invalid message from database")
+        }
+    } else {
+        m = ms.fetchMessageFromPeers(I)
+        if m == nil {
+            return nil, errors.New("message not found")
+        }
+    }
+    return m, nil
+}
+
 func (ms *MessageStore) syncSector(sector ShardSector) (err error) {
     lhc := ms.LHC
     lhc.Sync()
@@ -523,11 +524,7 @@ func (ms *MessageStore) refreshSector(sector ShardSector, since uint32) (err err
         if s.version == "0100" {
             continue
         }
-        c, err := sector.Contains(s.I)
-        if err != nil {
-            return err
-        }
-        if c {
+        if sector.Contains(s.I) {
             _, err = ms.FindByI(s.I)
             if err != nil {
                 //fmt.Printf("MessageStore.refreshSector : queueing %s\n", hex.EncodeToString(s.I))

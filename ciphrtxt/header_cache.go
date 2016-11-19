@@ -69,15 +69,10 @@ type StatusNetworkResponse struct {
     TOKPort int `json:"token_service_port"`
 }
 
-type StatusSectorResponse struct {
-    Ring uint `json:"ring"`
-    Start int `json:"start"`
-}
-
 type StatusResponse struct {
     Network StatusNetworkResponse `json:"network"`
     Pubkey string `json:"pubkey"`
-    Sector  StatusSectorResponse `json:"sector"`
+    Sector  ShardSector `json:"sector"`
     Storage StatusStorageResponse `json:"storage"`
     Version string `json:"version"`
 }

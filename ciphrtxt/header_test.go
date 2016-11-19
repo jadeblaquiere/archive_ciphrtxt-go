@@ -49,7 +49,7 @@ type THeaderListResponse struct {
 }
 
 func TestDeserializeSerialize (t *testing.T) {
-    res, err := http.Get("http://indigo.ciphrtxt.com:7754/api/header/list/since/0")
+    res, err := http.Get("http://indigo.ciphrtxt.com:7754/api/v2/headers?since=0")
     if err != nil {
         fmt.Println("whoops:", err)
         t.Fail()
@@ -406,7 +406,7 @@ func TestFindByI (t *testing.T) {
     }
     defer hc.Close()
 
-    res, err := http.Get("http://ciphrtxt.com:7754/api/header/list/since/0")
+    res, err := http.Get("http://violet.ciphrtxt.com:7754/api/v2/headers?since=0")
     if err != nil {
         fmt.Println("whoops:", err)
         t.Fail()
@@ -471,7 +471,7 @@ func TestLocalFindByI (t *testing.T) {
     }
     defer lhc.Close()
 
-    res, err := http.Get("http://ciphrtxt.com:7754/api/header/list/since/0")
+    res, err := http.Get("http://indigo.ciphrtxt.com:7754/api/v2/headers?since=0")
     if err != nil {
         fmt.Println("whoops:", err)
         t.Fail()
@@ -490,6 +490,7 @@ func TestLocalFindByI (t *testing.T) {
         t.Fail()
     }
     
+    lhc.addPeer("indigo.ciphrtxt.com", 7754)
     lhc.Sync()
     
     for _, hdr := range s.HeaderList {
@@ -562,11 +563,7 @@ func TestLocalFindSector (t *testing.T) {
                         t.Fail()
                     }
                 }
-                contains, err := seg.Contains(s.I)
-                if err != nil {
-                    fmt.Println("whoops:", err)
-                    t.Fail()
-                }
+                contains := seg.Contains(s.I)
                 if contains == false {
                     fmt.Printf("Error, %d outside of range [%d, %d)\n", i, start, end)
                     t.Fail()

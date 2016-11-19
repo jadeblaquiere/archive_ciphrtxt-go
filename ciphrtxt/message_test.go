@@ -67,7 +67,7 @@ func TestMessageIngestMove (t *testing.T) {
     
     for _, h := range mh {
         I := h.IKey()
-        res, err := http.Get("http://violet.ciphrtxt.com:7754/api/message/download/" + hex.EncodeToString(I))
+        res, err := http.Get("http://violet.ciphrtxt.com:7754/api/v2/messages/" + hex.EncodeToString(I))
         if err != nil {
             fmt.Println("whoops:", err)
             t.Fail()
@@ -84,7 +84,7 @@ func TestMessageIngestMove (t *testing.T) {
             f.Close()
             m := Ingest(filepath)
             if m == nil {
-                fmt.Println("whoops:", err)
+                fmt.Println("whoops: Ingest Failed!")
                 t.Fail()
             } else {
                 Ihex := hex.EncodeToString(m.IKey())
@@ -155,5 +155,68 @@ func TestOpenMessageStore (t *testing.T) {
     fmt.Println(" ... done")
     
     ms.Sync()
+}
+
+func TestFindOrFetch (t *testing.T) {
+    lhc, err := OpenLocalHeaderCache("headers")
+    if err != nil {
+        fmt.Println("whoops:", err)
+        t.Fail()
+    }
+    defer lhc.Close()
+    
+    rand.Seed(time.Now().Unix())
+    startbin := rand.Intn(0x200) + 0x200
+
+    ms, err := OpenMessageStore("./sparse_messages", lhc, startbin)
+    if err != nil {
+        fmt.Println("whoops:", err)
+        t.Fail()
+    }
+    defer ms.Close()
+    
+    ms.pruneExpired()
+    
+    lhc.addPeer("indigo.ciphrtxt.com",7754)
+    lhc.addPeer("violet.ciphrtxt.com",7754)
+    
+    lhc.Sync()
+    
+    target := ShardSector{
+        Start: startbin,
+        Ring: 9,
+    }
+    
+    ms.SetTarget(target)
+    
+    for i := 10 ; i > 0 ; i-- {
+        fmt.Printf("\rsleeping %d seconds  ", i)
+        time.Sleep(time.Second * 1)
+    }
+    fmt.Println(" ... done")
+    
+    ms.Sync()
+    
+    // generate list of all messages for last 1 hour
+    hdrs, err := lhc.FindSince(uint32(time.Now().Unix() - (1*3600)))
+    if err != nil {
+        t.Fail()
+    }
+    
+    for _, h := range hdrs {
+        I := h.IKey()
+        m, err := ms.FindOrFetchByI(I)
+        if err != nil {
+            fmt.Printf("ERROR : unable to retreive %s\n", hex.EncodeToString(I))
+            t.Fail()
+        } else {
+            if m != nil {
+                fmt.Printf("      : found %s\n", hex.EncodeToString(I))
+            } else {
+                fmt.Printf("ERROR : Invalid state nil, nil \n")
+                t.Fail()
+            }
+        }
+    }
 }
 
