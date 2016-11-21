@@ -254,17 +254,17 @@ func get_peers(ctx *iris.Context){
 }
 
 func add_peer(ctx *iris.Context){
-    var plr []ciphrtxt.PeerItemResponse
+    var pir ciphrtxt.PeerItemResponse
     
-    err := ctx.ReadJSON(&plr)
+    err := ctx.ReadJSON(&pir)
     if err != nil {
         ctx.EmitError(iris.StatusBadRequest)
         return
     }
     
-    for _, p := range plr {
-        fmt.Printf("received add_peer for %s:%d\n", p.Host, p.Port)
-    }
+    fmt.Printf("received add_peer for %s:%d\n", pir.Host, pir.Port)
+    
+    ms.LHC.AddPeer(pir.Host, pir.Port)
 
     ctx.Text(iris.StatusOK, "")
 }
