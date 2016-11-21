@@ -44,7 +44,7 @@ import (
 
 const lhcRefreshMinDelay = 30
 const lhcPeerConsecutiveErrorMax = 20
-const lhcPeerInfoMinDelay = 300
+const lhcPeerInfoMinDelay = 30
 
 type peerCache struct {
     HC    *HeaderCache

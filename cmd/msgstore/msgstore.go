@@ -142,6 +142,7 @@ func main() {
     api.Get("/api/v2/messages/:msgid", download_message)
     api.Post("/api/v2/messages", upload_message)
     api.Get("/api/v2/peers", get_peers)
+    api.Post("/api/v2/peers", add_peer)
     api.Get("/api/v2/status", get_status)
     api.Get("/api/v2/time", get_time)
     api.Get("/index", index)
