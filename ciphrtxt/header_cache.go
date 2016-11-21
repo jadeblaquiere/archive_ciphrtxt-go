@@ -609,13 +609,13 @@ func (hc *HeaderCache) postPeerInfo(host string, port uint16) (err error) {
     if err != nil {
         return err
     }
-    fmt.Printf("body for peer info post:\n%s\n", string(body))
+    //fmt.Printf("body for peer info post:\n%s\n", string(body))
 
     c := &http.Client{
         Timeout: time.Second * 10,
     }
     
-    fmt.Printf("POSTing message to : %s\n", hc.baseurl + apiPeer)
+    //fmt.Printf("POSTing message to : %s\n", hc.baseurl + apiPeer)
     res, err := c.Post(hc.baseurl + apiPeer, "application/json", bytes.NewBuffer(body))
     if err != nil {
         hc.NetworkErrors += 1
@@ -628,14 +628,16 @@ func (hc *HeaderCache) postPeerInfo(host string, port uint16) (err error) {
         return err
     }
     
-    fmt.Printf("POST Complete\n")
-    fmt.Printf("response status = %d\n", res.StatusCode)
-    fmt.Printf("response status text = %s\n", res.Status)
-    fmt.Printf("response header fields:\n")
-    for k, v := range res.Header {
-        fmt.Println("key:", k, "value:", v)
+    if res.StatusCode != 200 {
+        fmt.Printf("HC:postPeerInfo POST Complete, received error response\n")
+        fmt.Printf("response status = %d\n", res.StatusCode)
+        fmt.Printf("response status text = %s\n", res.Status)
+        fmt.Printf("response header fields:\n")
+        for k, v := range res.Header {
+            fmt.Println("key:", k, "value:", v)
+        }
+        fmt.Printf("response: \n%s\n", body)
     }
-    fmt.Printf("response: \n%s\n", body)
     
     return nil
 }

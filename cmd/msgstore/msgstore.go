@@ -262,7 +262,7 @@ func add_peer(ctx *iris.Context){
         return
     }
     
-    fmt.Printf("received add_peer for %s:%d\n", pir.Host, pir.Port)
+    //fmt.Printf("received add_peer for %s:%d\n", pir.Host, pir.Port)
     
     ms.LHC.AddPeer(pir.Host, pir.Port)
 
