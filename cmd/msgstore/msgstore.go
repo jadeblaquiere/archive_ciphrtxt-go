@@ -92,7 +92,7 @@ func main() {
     lhc.AddPeer("indigo.ciphrtxt.com",7754)
     lhc.AddPeer("violet.ciphrtxt.com",7754)
     
-    lhc.Sync()
+    //lhc.Sync()
     
     startbig, _ := rand.Int(rand.Reader, big.NewInt(0x200))
     startbin := int(startbig.Int64()) + 0x200
@@ -131,7 +131,7 @@ func main() {
         }
     } (ms, 60)
     
-    ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
+    //ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
     
     api := iris.New()
     api.Use(customLogger)
@@ -173,6 +173,16 @@ func peers(ctx *iris.Context){
     peerInfo := make([]ciphrtxt.PeerJSON, 0)
     now := uint32(time.Now().Unix())
     lhc := ms.LHC
+    pi := new(ciphrtxt.PeerJSON)
+    pi.Host = *configExternalHost
+    pi.Port = uint16(*configExternalPort)
+    pi.URL = "/index.html"
+    pi.Headers = lhc.Count
+    pi.Messages = ms.Count
+    target := ms.GetCurrentTarget()
+    pi.Start = target.Start
+    pi.Ring = int(target.Ring)
+    peerInfo = append(peerInfo, *pi)
     for _, p := range lhc.Peers {
         pi := p.HC.GetPeerStatsJSON()
         peerInfo = append(peerInfo, *pi)

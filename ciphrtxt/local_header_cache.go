@@ -530,17 +530,17 @@ func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
     
     lhc.Peers = append(lhc.Peers, pc)
 
-    insCount := int(0)
-
-    for _, mh := range mhdrs {
-        insert, err := lhc.Insert(&mh)
-        if err != nil {
-            return err
+    go func(lhc *LocalHeaderCache, mhdrs []RawMessageHeader) {
+        for _, mh := range mhdrs {
+            _, err := lhc.Insert(&mh)
+            if err != nil {
+                continue
+            }
+            //if insert {
+            //    insCount += 1
+            //}
         }
-        if insert {
-            insCount += 1
-        }
-    }
+    } (lhc, mhdrs)
     
     //fmt.Printf("LocalHeaderCache: inserted %d message headers\n", insCount)
 

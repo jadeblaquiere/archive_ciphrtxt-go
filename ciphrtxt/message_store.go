@@ -151,7 +151,7 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
         ms.quitchan[gr] = make(chan int)
         go func(ms *MessageStore, Iqueue chan []byte, cquit chan int, gr int) {
             defer ms.syncwg.Done()
-            fmt.Printf("in GR %d\n", gr)
+            //fmt.Printf("in GR %d\n", gr)
             for {
                 select {
                 case I := <- Iqueue:
@@ -168,12 +168,13 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
                         }
                     }
                 case <- cquit:
-                    fmt.Printf("GR %d done\n", gr)
+                    //fmt.Printf("GR %d done\n", gr)
                     return
                 }
             }
         }(ms, ms.iqueue, ms.quitchan[gr], gr)
     }
+    fmt.Printf("MS: Started %d download goroutines\n", syncMaxGoroutines)
     
     ms.db, err = leveldb.OpenFile(filepath + "/msgdb", nil)
     if err != nil {

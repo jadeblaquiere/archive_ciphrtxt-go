@@ -672,7 +672,7 @@ func (hc *HeaderCache) GetPeerStatsJSON() (stats *PeerJSON) {
     pi.Host = hc.host
     pi.Port = hc.port
     pi.URL = "http://" + hc.host + ":" + strconv.Itoa(int(hc.port)) + "/"
-    pi.Headers = hc.Count
+    pi.Headers = hc.status.Storage.Headers
     pi.Messages = hc.status.Storage.Messages
     pi.Start = hc.status.Sector.Start
     pi.Ring = int(hc.status.Sector.Ring)
