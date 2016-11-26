@@ -61,6 +61,7 @@ var configExtTokenPort =    flag.Int("tokenport",        7764, "Token Service ad
 var configExternalHost =   flag.String("exthost",          "", "Message Service advertised hostname/ip")
 var configExternalPort =      flag.Int("extport",        8080, "Message Service advertised port number")
 var configListenPort   =   flag.Int("listenport",        8080, "Message Service listen port number")
+var configTargetRing   =         flag.Int("ring",           1, "Target value for ring, default=2")
 
 func main() {
     nCpu := runtime.NumCPU()
@@ -98,7 +99,7 @@ func main() {
     startbin := int(startbig.Int64()) + 0x200
     target := ciphrtxt.ShardSector{
         Start: startbin,
-        Ring: 0,
+        Ring: *configTargetRing,
     }
 
     ms, err = ciphrtxt.OpenMessageStore("./messages", lhc, startbin)

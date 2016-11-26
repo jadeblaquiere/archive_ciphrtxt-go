@@ -486,7 +486,6 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
 }
 
 func (lhc *LocalHeaderCache) AddPeer(host string, port uint16) {
-    //should only have a single goroutine sync'ing at a time
     lhc.peerCandidateMutex.Lock()
     defer lhc.peerCandidateMutex.Unlock()
     

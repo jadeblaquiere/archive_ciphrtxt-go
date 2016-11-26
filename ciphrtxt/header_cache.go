@@ -156,10 +156,14 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
         return nil, err
     }
     
-    err = hc.recount()
-    if err != nil {
-        //fmt.Printf("whoops5", err)
-        return nil, err
+    if hc.recoverCheckpoint() != nil {
+        err = hc.recount()
+        if err != nil {
+            //fmt.Printf("whoops5", err)
+            return nil, err
+        }
+    } else {
+        fmt.Printf("HeaderCache recovered checkpoint @ tstamp %d\n", hc.serverTime)
     }
     
     fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
@@ -236,6 +240,34 @@ func serializeUint32(u uint32) []byte {
 
 func deserializeUint32(su []byte) uint32 {
     return binary.BigEndian.Uint32(su[:4])
+}
+
+func (hc *HeaderCache) checkpoint() (err error) {
+    buf := new(bytes.Buffer)
+    binary.Write(buf, binary.BigEndian, hc.serverTime)
+    binary.Write(buf, binary.BigEndian, hc.lastRefreshServer)
+    binary.Write(buf, binary.BigEndian, hc.lastRefreshLocal)
+    binary.Write(buf, binary.BigEndian, uint64(hc.Count))
+    value := buf.Bytes()[:]
+    key := []byte("\000\000\000\000")
+    return hc.db.Put(key,value,nil)
+}
+
+func (hc *HeaderCache) recoverCheckpoint() (err error) {
+    key := []byte("\000\000\000\000")
+    value, err := hc.db.Get(key, nil)
+    if err != nil {
+        return err
+    }
+
+    if len(value) != 20 {
+        return fmt.Errorf("checkpoint value length mismatch")
+    }
+    hc.serverTime = binary.BigEndian.Uint32(value[0:4])
+    hc.lastRefreshServer = binary.BigEndian.Uint32(value[4:8])
+    hc.lastRefreshLocal = binary.BigEndian.Uint32(value[8:12])
+    hc.Count = int(binary.BigEndian.Uint64(value[12:20]))
+    return nil
 }
 
 func (hc *HeaderCache) Insert(h *RawMessageHeader) (insert bool, err error) {
@@ -522,6 +554,8 @@ func (hc *HeaderCache) Sync() (err error) {
             insCount += 1
         }
     }
+
+    hc.checkpoint()
 
     hc.lastRefreshServer = serverTime
     hc.lastRefreshLocal = now
