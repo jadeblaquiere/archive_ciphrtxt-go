@@ -45,8 +45,8 @@ import (
     
     "github.com/jadeblaquiere/cttd/btcec"
     "github.com/jadeblaquiere/ciphrtxt-go/ciphrtxt"
-    "github.com/kataras/iris"
-    "github.com/iris-contrib/middleware/logger"
+    "gopkg.in/kataras/iris.v5"
+    "gopkg.in/iris-contrib/middleware.v5/logger"
 )
 
 var ms *ciphrtxt.MessageStore
@@ -99,7 +99,7 @@ func main() {
     startbin := int(startbig.Int64()) + 0x200
     target := ciphrtxt.ShardSector{
         Start: startbin,
-        Ring: *configTargetRing,
+        Ring: uint(*configTargetRing),
     }
 
     ms, err = ciphrtxt.OpenMessageStore("./messages", lhc, startbin)
