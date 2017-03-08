@@ -43,6 +43,8 @@ import (
     "strconv"
     "sync"
     "time"
+    
+    "github.com/gorilla/websocket"
 )
 
 const apiStatus string = "api/v2/status"
@@ -50,6 +52,8 @@ const apiTime string = "api/v2/time"
 const apiPeer string = "api/v2/peers"
 const apiHeadersSince string = "api/v2/headers?since="
 const apiMessagesDownload string = "api/v2/messages/"
+const apiDownloadNoRecurse string = "?recurse=false"
+const apiWebsocketEndpoint string = "wsapi/v2/ws/"
 
 const refreshMinDelay = 30
 
@@ -113,6 +117,7 @@ type HeaderCache struct {
     Count int
     NetworkErrors int
     PeerInfo []PeerItemResponse
+    wscon *websocket.Conn
 }
 
 // NOTE : if dbpath is empty ("") header cache will be in-memory only
@@ -166,8 +171,29 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
         fmt.Printf("HeaderCache recovered checkpoint @ tstamp %d\n", hc.serverTime)
     }
     
+    var dialer *websocket.Dialer
+    
+    con, _, err := dialer.Dial(hc.baseurl + apiWebsocketEndpoint, nil)
+    if err != nil {
+        fmt.Printf("Unable to connect to %s, proceeding using polling only\n", hc.baseurl + apiWebsocketEndpoint)
+    } else {
+        hc.wscon = con
+        go hc.websocketReceive()
+    }
+    
     fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
     return hc, nil
+}
+
+func (hc *HeaderCache) websocketReceive() {
+    for {
+        _, message, err := hc.wscon.ReadMessage()
+        if err != nil {
+            panic(err)
+        }
+
+        fmt.Println("recv:", string(message))
+    }
 }
 
 func (hc *HeaderCache) recount() (err error) {
@@ -570,8 +596,8 @@ func (hc *HeaderCache) tryDownloadMessage(I []byte, recvpath string) (m *Message
         Timeout: time.Second * 60,
     }
 
-    //fmt.Printf("try download %s\n", hc.baseurl + apiMessagesDownload + hex.EncodeToString(I))
-    res, err := c.Get(hc.baseurl + apiMessagesDownload + hex.EncodeToString(I))
+    // fmt.Printf("try download %s\n", hc.baseurl + apiMessagesDownload + hex.EncodeToString(I) + apiDownloadNoRecurse)
+    res, err := c.Get(hc.baseurl + apiMessagesDownload + hex.EncodeToString(I) + apiDownloadNoRecurse)
     if err != nil {
         hc.NetworkErrors += 1
         return nil, err

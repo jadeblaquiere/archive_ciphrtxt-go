@@ -41,6 +41,8 @@ import (
     "runtime"
     "sort"
     "strconv"
+    "strings"
+    "sync"
     "time"
     
     "github.com/jadeblaquiere/cttd/btcec"
@@ -62,6 +64,58 @@ var configExternalHost =   flag.String("exthost",          "", "Message Service 
 var configExternalPort =      flag.Int("extport",        8080, "Message Service advertised port number")
 var configListenPort   =   flag.Int("listenport",        8080, "Message Service listen port number")
 var configTargetRing   =         flag.Int("ring",           1, "Target value for ring, default=2")
+
+type WSClient struct{
+    con iris.WebsocketConnection
+    wss *WSServer
+    mutex sync.Mutex
+}
+
+func (wsc *WSClient) Receive (message []byte) {
+    fmt.Println("recv :", string(message))
+}
+
+func (wsc *WSClient) Disconnect () {
+    fmt.Println("client disconnect")
+    wsc.wss.Disconnect(wsc)
+}
+
+type WSServer struct{
+    clients []*WSClient
+    listMutex sync.Mutex
+}
+
+func (wss *WSServer) Connect (con iris.WebsocketConnection) {
+    wss.listMutex.Lock()
+    defer wss.listMutex.Unlock()
+    
+    c := &WSClient{con: con, wss: wss}
+    wss.clients = append(wss.clients, c)
+
+    con.OnMessage(c.Receive)
+    
+    con.OnDisconnect(c.Disconnect)
+}
+
+func (wss *WSServer) Disconnect (wsc *WSClient) {
+    wss.listMutex.Lock()
+    defer wss.listMutex.Unlock()
+    
+    l := len(wss.clients)
+    
+    if l == 0 {
+        panic("WSS:trying to delete client from empty list")
+    }
+    
+    for p, v := range wss.clients {
+        if v == wsc {
+            wss.clients[p] = wss.clients[l-1]
+            wss.clients = wss.clients[:l-1]
+            return
+        }
+    }
+    panic("WSS:trying to delete client not in list")
+}
 
 func main() {
     nCpu := runtime.NumCPU()
@@ -134,6 +188,8 @@ func main() {
     
     //ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
     
+    wss := &WSServer{}
+    
     api := iris.New()
     api.Use(customLogger)
     api.Get("/", index)
@@ -150,6 +206,10 @@ func main() {
     api.Get("/index.html", index)
     api.Get("/peers.html", peers)
     api.StaticWeb("/static", "./static", 1)
+    
+    api.Config.Websocket.Endpoint = "/wsapi/v2/ws/"
+    api.Websocket.OnConnection(wss.Connect)
+    
     listenString := ":" + strconv.Itoa(*configListenPort)
     api.Listen(listenString)
     //api.Listen(":8080")
@@ -282,18 +342,28 @@ func add_peer(ctx *iris.Context){
 
 func download_message(ctx *iris.Context){
     msgid := ctx.Param("msgid")
+    recurse := ctx.Param("recurse")
     I, err := hex.DecodeString(msgid)
     if err != nil {
         ctx.EmitError(iris.StatusBadRequest)
         return
     }
     
-    m, err := ms.FindOrFetchByI(I)
-    if err != nil {
-        ctx.EmitError(iris.StatusNotFound)
-        return
+    var m *ciphrtxt.MessageFile
+    if strings.ToLower(recurse) == "false" {
+        m, err = ms.FindByI(I)
+        if err != nil {
+            ctx.EmitError(iris.StatusNotFound)
+            return
+        }
+    } else {
+        m, err = ms.FindOrFetchByI(I)
+        if err != nil {
+            ctx.EmitError(iris.StatusNotFound)
+            return
+        }
     }
-
+    
     if m == nil {
         ctx.EmitError(iris.StatusNotFound)
         return
