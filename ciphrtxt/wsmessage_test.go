@@ -55,7 +55,7 @@ func TestWSMSerializeDeserialize(t *testing.T) {
 		fmt.Println("Error serializing TimeRequest")
 		t.Fail()
 	}
-	fmt.Printf("serialized message:")
+	fmt.Printf("Time Request serialized message:")
 	for i := 0; i < len(trqSer); i++ {
 		fmt.Printf("%02X", trqSer[i])
 	}
@@ -76,7 +76,7 @@ func TestWSMSerializeDeserialize(t *testing.T) {
 		fmt.Println("Error serializing StatusRequest")
 		t.Fail()
 	}
-	fmt.Printf("serialized message:")
+	fmt.Printf("Status Request serialized message:")
 	for i := 0; i < len(srqSer); i++ {
 		fmt.Printf("%02X", srqSer[i])
 	}
@@ -98,7 +98,7 @@ func TestWSMSerializeDeserialize(t *testing.T) {
 		fmt.Println("Error serializing StatusRequest")
 		t.Fail()
 	}
-	fmt.Printf("serialized message:")
+	fmt.Printf("Headers Since Request serialized message:")
 	for i := 0; i < len(hsrqSer); i++ {
 		fmt.Printf("%02X", hsrqSer[i])
 	}

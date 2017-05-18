@@ -31,7 +31,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	//"encoding/hex"
-	//"encoding/json"
+	"encoding/json"
 	"errors"
 	//"fmt"
 	"hash/crc32"
@@ -148,5 +148,26 @@ func NewWSMessageTimeResponse() (wsm *WSMessage) {
 }
 
 func NewWSMessageHeaderReponse(hdr *RawMessageHeader) (wsm *WSMessage) {
-	return nil
+	hdrBody := hdr.Serialize()
+	wsm = new(WSMessage)
+	wsm.Ver = 0x0001
+	wsm.Type = WSResponseTypeHeader
+	wsm.DataLen = uint64(len(hdrBody))
+	wsm.Data = make([]byte, wsm.DataLen)
+	copy(wsm.Data[:], hdrBody[:])
+	return wsm
+}
+
+func NewWSMessageStatusResponse(sr *StatusResponse) (wsm *WSMessage) {
+	statusJSON, err := json.Marshal(sr)
+	if err != nil {
+		return nil
+	}
+	wsm = new(WSMessage)
+	wsm.Ver = 0x0001
+	wsm.Type = WSResponseTypeStatus
+	wsm.DataLen = uint64(len(statusJSON))
+	wsm.Data = make([]byte, wsm.DataLen)
+	copy(wsm.Data[:], statusJSON[:])
+	return wsm
 }
