@@ -356,7 +356,7 @@ func (hc *HeaderCache) FindByI(I []byte) (h *RawMessageHeader, err error) {
 	}
 	//fmt.Printf("FindbyI : length = %d\n", len(value))
 	h = new(RawMessageHeader)
-	if h.Deserialize(string(value[0:len(value)-4])) == nil {
+	if h.Deserialize(string(value[0:len(value)-4])) != nil {
 		return nil, errors.New("retreived invalid header from database")
 	}
 	return h, nil
@@ -384,7 +384,7 @@ func (hc *HeaderCache) FindSince(tstamp uint32) (hdrs []RawMessageHeader, err er
 	for iter.Next() {
 		h := new(RawMessageHeader)
 		value := iter.Value()
-		if h.Deserialize(string(value[0:len(value)-4])) == nil {
+		if h.Deserialize(string(value[0:len(value)-4])) != nil {
 			return nil, errors.New("error parsing message")
 		}
 		hdrs = append(hdrs, *h)
@@ -414,7 +414,7 @@ func (hc *HeaderCache) FindExpiringAfter(tstamp uint32) (hdrs []RawMessageHeader
 	for iter.Next() {
 		h := new(RawMessageHeader)
 		value := iter.Value()
-		if h.Deserialize(string(value[0:len(value)-4])) == nil {
+		if h.Deserialize(string(value[0:len(value)-4])) != nil {
 			return nil, errors.New("error parsing message")
 		}
 		hdrs = append(hdrs, *h)
@@ -478,7 +478,7 @@ func (hc *HeaderCache) getHeadersSince(since uint32) (mh []RawMessageHeader, err
 	mh = make([]RawMessageHeader, 0)
 	for _, hdr := range s.Headers {
 		h := new(RawMessageHeader)
-		if h.Deserialize(hdr) == nil {
+		if h.Deserialize(hdr) != nil {
 			return nil, errors.New("error parsing message")
 		}
 		mh = append(mh, *h)
@@ -506,7 +506,7 @@ func (hc *HeaderCache) pruneExpired() (err error) {
 
 	for iter.Next() {
 		value := iter.Value()
-		if hdr.Deserialize(string(value[0:len(value)-4])) == nil {
+		if hdr.Deserialize(string(value[0:len(value)-4])) != nil {
 			//return errors.New("unable to parse database value")
 			fmt.Printf("HC(%s): unable to parse: %s\n", hc.baseurl, string(value[:MessageHeaderLengthB64V2]))
 			continue

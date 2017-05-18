@@ -74,7 +74,7 @@ func Ingest(filepath string) *MessageFile {
 	z := new(MessageFile)
 
 	// parse message header
-	if z.RawMessageHeader.Deserialize(string(smh)) == nil {
+	if z.RawMessageHeader.Deserialize(string(smh)) != nil {
 		return nil
 	}
 
@@ -122,7 +122,7 @@ func (z *MessageFile) Deserialize(bmh []byte) *MessageFile {
 	if len(bmh) < (MessageHeaderLengthV2 + 16) {
 		return nil
 	}
-	if z.RawMessageHeader.importBinaryHeaderV2(bmh) == nil {
+	if z.RawMessageHeader.importBinaryHeaderV2(bmh) != nil {
 		return nil
 	}
 	z.Size = binary.BigEndian.Uint64(bmh[MessageHeaderLengthV2 : MessageHeaderLengthV2+8])

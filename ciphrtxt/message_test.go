@@ -210,9 +210,10 @@ func TestFindOrFetch(t *testing.T) {
 			fmt.Printf("ERROR : unable to retreive %s\n", hex.EncodeToString(I))
 			t.Fail()
 		} else {
-			if m != nil {
-				fmt.Printf("      : found %s\n", hex.EncodeToString(I))
-			} else {
+			// if m != nil {
+			//	fmt.Printf("      : found %s\n", hex.EncodeToString(I))
+			//} else {
+			if m == nil {
 				fmt.Printf("ERROR : Invalid state nil, nil \n")
 				t.Fail()
 			}

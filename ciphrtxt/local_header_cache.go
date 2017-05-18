@@ -195,7 +195,7 @@ func (lhc *LocalHeaderCache) FindByI(I []byte) (h *RawMessageHeader, err error) 
 		return nil, err
 	}
 	h = new(RawMessageHeader)
-	if h.Deserialize(string(value)) == nil {
+	if h.Deserialize(string(value)) != nil {
 		return nil, errors.New("retreived invalid header from database")
 	}
 	return h, nil
@@ -222,7 +222,7 @@ func (lhc *LocalHeaderCache) FindSince(tstamp uint32) (hdrs []RawMessageHeader, 
 	hdrs = make([]RawMessageHeader, 0)
 	for iter.Next() {
 		h := new(RawMessageHeader)
-		if h.Deserialize(string(iter.Value())) == nil {
+		if h.Deserialize(string(iter.Value())) != nil {
 			return nil, errors.New("error parsing message header")
 		}
 		hdrs = append(hdrs, *h)
@@ -294,7 +294,7 @@ func (lhc *LocalHeaderCache) findSector(seg ShardSector) (hdrs []RawMessageHeade
 	hdrs = make([]RawMessageHeader, 0)
 	for iter.Next() {
 		h := new(RawMessageHeader)
-		if h.Deserialize(string(iter.Value())) == nil {
+		if h.Deserialize(string(iter.Value())) != nil {
 			return nil, errors.New("error parsing message")
 		}
 		hdrs = append(hdrs, *h)
@@ -305,7 +305,7 @@ func (lhc *LocalHeaderCache) findSector(seg ShardSector) (hdrs []RawMessageHeade
 
 		for iter.Next() {
 			h := new(RawMessageHeader)
-			if h.Deserialize(string(iter.Value())) == nil {
+			if h.Deserialize(string(iter.Value())) != nil {
 				return nil, errors.New("error parsing message header")
 			}
 			hdrs = append(hdrs, *h)
@@ -337,7 +337,7 @@ func (lhc *LocalHeaderCache) FindExpiringAfter(tstamp uint32) (hdrs []RawMessage
 	hdrs = make([]RawMessageHeader, 0)
 	for iter.Next() {
 		h := new(RawMessageHeader)
-		if h.Deserialize(string(iter.Value())) == nil {
+		if h.Deserialize(string(iter.Value())) != nil {
 			return nil, errors.New("error parsing message header")
 		}
 		hdrs = append(hdrs, *h)
@@ -370,7 +370,7 @@ func (lhc *LocalHeaderCache) pruneExpired() (err error) {
 
 	for iter.Next() {
 		value := iter.Value()
-		if hdr.Deserialize(string(value[0:len(value)-4])) == nil {
+		if hdr.Deserialize(string(value[0:len(value)-4])) != nil {
 			//return errors.New("unable to parse database value")
 			fmt.Printf("LHC: unable to parse: %s\n", string(value[:MessageHeaderLengthB64V2]))
 			continue

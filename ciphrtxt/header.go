@@ -33,11 +33,21 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
+
+type MessageHeader interface {
+	Serialize() []byte
+	Deserialize() error
+	MessageTime() time.Time
+	ExpireTime() time.Time
+	IKey() []byte
+	Hash() []byte
+}
 
 const MessageHeaderLengthV1 = 5 + 1 + // "M0100" + ":"
 	8 + 1 + // time(32 bit hex) + ":"
@@ -117,12 +127,12 @@ type MessageHeaderJSON struct {
 	Nonce     uint64 `json:"nonce"`
 }
 
-func (z *RawMessageHeader) deserializeV1(s string) *RawMessageHeader {
+func (z *RawMessageHeader) deserializeV1(s string) error {
 	var err error
 	var t64 uint64
 	var d = strings.Split(s, ":")
 	if len(d) != 8 || strings.Compare(d[0], "M0100") != 0 {
-		return nil
+		return errors.New("V1 version string error")
 	}
 	z.version = "0100"
 	t64, _ = strconv.ParseUint(d[1], 16, 32)
@@ -131,33 +141,33 @@ func (z *RawMessageHeader) deserializeV1(s string) *RawMessageHeader {
 	z.expire = uint32(t64)
 	z.I, err = hex.DecodeString(d[3])
 	if err != nil {
-		return nil
+		return errors.New("V1 Error decoding I value as hex")
 	}
 	z.J, err = hex.DecodeString(d[4])
 	if err != nil {
-		return nil
+		return errors.New("V1 Error decoding J value as hex")
 	}
 	z.K, err = hex.DecodeString(d[5])
 	if err != nil {
-		return nil
+		return errors.New("V1 Error decoding K value as hex")
 	}
 	z.r, err = hex.DecodeString(d[6])
 	if err != nil {
-		return nil
+		return errors.New("V1 Error decoding r value as hex")
 	}
 	z.s, err = hex.DecodeString(d[7])
 	if err != nil {
-		return nil
+		return errors.New("V1 Error decoding s value as hex")
 	}
-	return z
+	return nil
 }
 
-func (z *RawMessageHeader) deserializeV2(s string) *RawMessageHeader {
+func (z *RawMessageHeader) deserializeV2(s string) error {
 	var err error
 	smh := make([]byte, 0)
 	if len(s) < ShortMessageHeaderLengthB64V2 {
 		//fmt.Println("message too short")
-		return nil
+		return errors.New("V2 Header too short")
 	}
 	if len(s) >= MessageHeaderLengthB64V2 {
 		smh, err = base64.StdEncoding.DecodeString(s[:MessageHeaderLengthB64V2])
@@ -166,18 +176,18 @@ func (z *RawMessageHeader) deserializeV2(s string) *RawMessageHeader {
 	}
 	if err != nil {
 		//fmt.Println("base64 conversion failed")
-		return nil
+		return errors.New("V2 not in base64")
 	}
 	return z.importBinaryHeaderV2(smh[:])
 }
 
-func (z *RawMessageHeader) importBinaryHeaderV2(smh []byte) *RawMessageHeader {
+func (z *RawMessageHeader) importBinaryHeaderV2(smh []byte) error {
 	if len(smh) < ShortMessageHeaderLengthV2 {
-		return nil
+		return errors.New("V2 Header too short")
 	}
 	if bytes.Compare(smh[:4], []byte("M\x02\x00\x00")) != 0 {
 		//fmt.Println("v0200 version string mismatch")
-		return nil
+		return errors.New("V2 version string mismatch")
 	}
 	z.version = "0200"
 	z.time = binary.BigEndian.Uint32(smh[4:8])
@@ -207,10 +217,10 @@ func (z *RawMessageHeader) importBinaryHeaderV2(smh []byte) *RawMessageHeader {
 		z.nonce = ((uint64)(ui8) << 32)
 		z.nonce += (uint64)(ui32)
 	}
-	return z
+	return nil
 }
 
-func (z *RawMessageHeader) Deserialize(s string) *RawMessageHeader {
+func (z *RawMessageHeader) Deserialize(s string) error {
 	if strings.Compare(s[:3], "M01") == 0 {
 		return z.deserializeV1(s)
 	} else {
@@ -303,7 +313,10 @@ func (z *RawMessageHeader) ExportBinaryHeaderV2() *BinaryMessageHeaderV2 {
 
 func ImportBinaryHeaderV2(smh []byte) *RawMessageHeader {
 	z := new(RawMessageHeader)
-	return z.importBinaryHeaderV2(smh)
+	if z.importBinaryHeaderV2(smh) != nil {
+		return nil
+	}
+	return z
 }
 
 func (z *RawMessageHeader) MessageTime() time.Time {
