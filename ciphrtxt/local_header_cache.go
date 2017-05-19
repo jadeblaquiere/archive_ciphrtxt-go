@@ -138,7 +138,7 @@ func (lhc *LocalHeaderCache) Close() {
 	}
 }
 
-func (lhc *LocalHeaderCache) Insert(h *RawMessageHeader) (insert bool, err error) {
+func (lhc *LocalHeaderCache) Insert(h MessageHeader) (insert bool, err error) {
 	servertime := uint32(time.Now().Unix())
 
 	dbk, err := h.dbKeys(servertime)
@@ -168,8 +168,8 @@ func (lhc *LocalHeaderCache) Insert(h *RawMessageHeader) (insert bool, err error
 	return true, nil
 }
 
-func (lhc *LocalHeaderCache) Remove(h *RawMessageHeader) (err error) {
-	value, err := lhc.db.Get(h.I, nil)
+func (lhc *LocalHeaderCache) Remove(h MessageHeader) (err error) {
+	value, err := lhc.db.Get(h.IKey(), nil)
 	if err != nil {
 		return err
 	}

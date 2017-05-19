@@ -239,7 +239,7 @@ type dbkeys struct {
 	I          []byte
 }
 
-func (h *RawMessageHeader) dbKeys(servertime uint32) (dbk *dbkeys, err error) {
+func (h RawMessageHeader) dbKeys(servertime uint32) (dbk *dbkeys, err error) {
 	dbk = new(dbkeys)
 	dbk.date, err = hex.DecodeString(fmt.Sprintf("D0%08X", h.time))
 	if err != nil {
@@ -300,7 +300,7 @@ func (hc *HeaderCache) recoverCheckpoint() (err error) {
 	return nil
 }
 
-func (hc *HeaderCache) Insert(h *RawMessageHeader) (insert bool, err error) {
+func (hc *HeaderCache) Insert(h MessageHeader) (insert bool, err error) {
 	servertime := uint32(time.Now().Unix())
 	dbk, err := h.dbKeys(servertime)
 	if err != nil {
@@ -328,8 +328,8 @@ func (hc *HeaderCache) Insert(h *RawMessageHeader) (insert bool, err error) {
 	return true, nil
 }
 
-func (hc *HeaderCache) Remove(h *RawMessageHeader) (err error) {
-	value, err := hc.db.Get(h.I, nil)
+func (hc *HeaderCache) Remove(h MessageHeader) (err error) {
+	value, err := hc.db.Get(h.IKey(), nil)
 	if err != nil {
 		return err
 	}
@@ -347,7 +347,7 @@ func (hc *HeaderCache) Remove(h *RawMessageHeader) (err error) {
 	return hc.db.Write(batch, nil)
 }
 
-func (hc *HeaderCache) FindByI(I []byte) (h *RawMessageHeader, err error) {
+func (hc *HeaderCache) FindByI(I []byte) (h MessageHeader, err error) {
 	hc.Sync()
 
 	value, err := hc.db.Get(I, nil)

@@ -33,6 +33,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	//"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -41,12 +42,13 @@ import (
 )
 
 type MessageHeader interface {
-	Serialize() []byte
-	Deserialize() error
+	Serialize() string
+	Deserialize(string) error
 	MessageTime() time.Time
 	ExpireTime() time.Time
 	IKey() []byte
 	Hash() []byte
+	dbKeys(uint32) (*dbkeys, error)
 }
 
 const MessageHeaderLengthV1 = 5 + 1 + // "M0100" + ":"
@@ -217,6 +219,8 @@ func (z *RawMessageHeader) importBinaryHeaderV2(smh []byte) error {
 		z.nonce = ((uint64)(ui8) << 32)
 		z.nonce += (uint64)(ui32)
 	}
+	//jsontxt, _ := json.Marshal(z.JSON())
+	//fmt.Printf("imported as (JSON) %s\n", jsontxt)
 	return nil
 }
 

@@ -147,7 +147,7 @@ func NewWSMessageTimeResponse() (wsm *WSMessage) {
 	return wsm
 }
 
-func NewWSMessageHeaderReponse(hdr *RawMessageHeader) (wsm *WSMessage) {
+func NewWSMessageHeaderReponse(hdr MessageHeader) (wsm *WSMessage) {
 	hdrBody := hdr.Serialize()
 	wsm = new(WSMessage)
 	wsm.Ver = 0x0001
