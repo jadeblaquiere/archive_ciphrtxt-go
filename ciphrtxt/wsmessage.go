@@ -139,11 +139,12 @@ func NewWSMessageTimeResponse() (wsm *WSMessage) {
 	unixtime := uint32(time.Now().Unix())
 	wsm = new(WSMessage)
 	wsm.Ver = 0x0001
-	wsm.Type = WSResponseTypeStatus
+	wsm.Type = WSResponseTypeTime
 	wsm.DataLen = 4
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, unixtime)
-	wsm.Data = make([]byte, 0)
+	wsm.Data = make([]byte, 4)
+	copy(wsm.Data[:], buf.Bytes()[:])
 	return wsm
 }
 

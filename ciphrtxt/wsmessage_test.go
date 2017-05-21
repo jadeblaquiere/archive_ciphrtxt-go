@@ -36,6 +36,7 @@ import (
 	//"net/http"
 	//"io"
 	//"io/ioutil"
+	"encoding/binary"
 	//"encoding/base64"
 	//"encoding/hex"
 	//"encoding/json"
@@ -91,7 +92,7 @@ func TestWSMSerializeDeserialize(t *testing.T) {
 		t.Fail()
 	}
 
-	tMinus5Min := uint32(time.Now().Unix())
+	tMinus5Min := uint32(time.Now().Unix() - (5 * 60 * 60))
 	hsrq := NewWSMessageHeadersSinceRequest(tMinus5Min)
 	hsrqSer := hsrq.SerializeMessage()
 	if hsrqSer == nil {
@@ -110,6 +111,34 @@ func TestWSMSerializeDeserialize(t *testing.T) {
 	}
 	if (hsrqDes.Ver != hsrq.Ver) || (hsrqDes.Type != hsrq.Type) || (hsrqDes.DataLen != hsrq.DataLen) || (bytes.Compare(hsrq.Data, hsrqDes.Data) != 0) {
 		fmt.Println("Deserialized data mismatch")
+		t.Fail()
+	}
+
+	tBefore := uint32(time.Now().Unix())
+	trs := NewWSMessageTimeResponse()
+	tAfter := uint32(time.Now().Unix())
+	trsSer := trs.SerializeMessage()
+	if trsSer == nil {
+		fmt.Println("Error serializing StatusRequest")
+		t.Fail()
+	}
+	fmt.Printf("Time Response serialized message:")
+	for i := 0; i < len(trsSer); i++ {
+		fmt.Printf("%02X", trsSer[i])
+	}
+	fmt.Println("")
+	trsDes, err := DeserializeWSMessage(trsSer)
+	if err != nil {
+		fmt.Println("Deserialization failed:", err)
+		t.Fail()
+	}
+	if (trsDes.Ver != trs.Ver) || (trsDes.Type != trs.Type) || (trsDes.DataLen != trs.DataLen) || (bytes.Compare(trs.Data, trsDes.Data) != 0) {
+		fmt.Println("Deserialized data mismatch")
+		t.Fail()
+	}
+	responsetime := binary.BigEndian.Uint32(trs.Data)
+	if (responsetime < tBefore) || (tAfter < responsetime) {
+		fmt.Printf("Time Response time out of bounds")
 		t.Fail()
 	}
 }
