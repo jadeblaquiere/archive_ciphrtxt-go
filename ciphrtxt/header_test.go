@@ -36,6 +36,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"sort"
@@ -46,6 +47,20 @@ import (
 
 type THeaderListResponse struct {
 	HeaderList []string `json:"header_list"`
+}
+
+func TestPadbytes(t *testing.T) {
+	for i := 1; i < 258; i++ {
+		j := big.NewInt(1)
+		j = j.Lsh(j, uint(i))
+		jpad := padbytes(j, 33)
+		if jpad == nil {
+			fmt.Println("jpad returned as nil: out of range!")
+			t.Fail()
+		} else {
+			fmt.Println("jpad : ", hex.EncodeToString(jpad))
+		}
+	}
 }
 
 func TestDeserializeSerialize(t *testing.T) {
@@ -149,6 +164,113 @@ func TestDeserializeSerialize(t *testing.T) {
 		}
 
 		if hex.EncodeToString(h.I) != hex.EncodeToString(dbk.I) {
+			fmt.Printf("I key mismatch\n")
+			t.Fail()
+		}
+	}
+}
+
+func TestDeserializeSerializeFull(t *testing.T) {
+	res, err := http.Get("http://indigo.ciphrtxt.com:7754/api/v2/headers?since=0")
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	s := new(THeaderListResponse)
+	err = json.Unmarshal(body, &s)
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	//count := int(0)
+	for _, hdr := range s.HeaderList {
+		h := new(FullMessageHeader)
+		//fmt.Printf("Ingesting header %s\n", hdr)
+		err := h.Deserialize(hdr)
+		//fmt.Printf("Ingested header as I= %s\n", h.IKey())
+		//jsontxt, _ := json.Marshal(h.JSON())
+		//fmt.Printf("JSON header as I= %s\n", jsontxt)
+		if err != nil {
+			fmt.Printf("Error parsing header %s\n", err)
+			t.Fail()
+		}
+		//fmt.Printf("serializing header...\n")
+		hdr_out := h.Serialize()
+		//hdr_bin := h.ExportBinaryHeaderV2()
+		//if hdr_bin == nil {
+		//	continue
+		//}
+		//hh := ImportBinaryHeaderV2(hdr_bin[:])
+		//count += 1
+
+		if hdr != hdr_out {
+			fmt.Println("hdr mismatch!")
+			fmt.Println(" in  : " + hdr)
+			fmt.Println(" out : " + hdr_out)
+			fmt.Println()
+			t.Fail()
+		}
+
+		//if hh.Serialize() != hdr_out {
+		//	fmt.Println("hdr mismatch!")
+		//	fmt.Println(" in  : " + hh.Serialize())
+		//	fmt.Println(" out : " + hdr_out)
+		//	fmt.Println()
+		//	t.Fail()
+		//}
+
+		//if hdr_bin != nil {
+		//	b64 := base64.StdEncoding.EncodeToString(hdr_bin[:])
+		//	if hdr != hdr_out {
+		//		fmt.Println("binary hdr mismatch!")
+		//		fmt.Println(" bin : " + b64)
+		//		fmt.Println(" out : " + hdr_out)
+		//		fmt.Println()
+		//		t.Fail()
+		//	}
+		//}
+
+		servertime := uint32(time.Now().Unix())
+		dbk, err := h.dbKeys(servertime)
+		if err != nil {
+			fmt.Println("whoops:", err)
+			t.Fail()
+		}
+		//fmt.Println(hdr)
+		//fmt.Println("    " + hex.EncodeToString(dbk.date))
+		//fmt.Println("    " + hex.EncodeToString(dbk.servertime))
+		//fmt.Println("    " + hex.EncodeToString(dbk.expire))
+		//fmt.Println("    " + hex.EncodeToString(dbk.I))
+		//fmt.Println()
+
+		t64, err := strconv.ParseUint(hex.EncodeToString(dbk.date)[2:10], 16, 32)
+		time := uint32(t64)
+		if (h.rmh.time != time) || (hex.EncodeToString(h.IKey()) != hex.EncodeToString(dbk.date)[10:76]) {
+			fmt.Printf("date key mismatch\n")
+			t.Fail()
+		}
+
+		if hex.EncodeToString(h.IKey()) != hex.EncodeToString(dbk.servertime)[10:76] {
+			fmt.Printf("servertime key mismatch\n")
+			t.Fail()
+		}
+
+		t64, err = strconv.ParseUint(hex.EncodeToString(dbk.expire)[2:10], 16, 32)
+		expire := uint32(t64)
+		if (h.rmh.expire != expire) || (hex.EncodeToString(h.IKey()) != hex.EncodeToString(dbk.expire)[10:76]) {
+			fmt.Printf("expire key mismatch\n")
+			t.Fail()
+		}
+
+		if hex.EncodeToString(h.IKey()) != hex.EncodeToString(dbk.I) {
 			fmt.Printf("I key mismatch\n")
 			t.Fail()
 		}

@@ -36,6 +36,7 @@ import (
 	//"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -98,6 +99,21 @@ type BinaryMessageHeaderV2 [MessageHeaderLengthV2]byte
 // RawMessageHeader treats larger data objects (EC Points, big integers) as strings
 // instead of parsing them to their numerical value
 
+type MessageHeaderJSON struct {
+	Version   string `json:"version"`
+	Time      uint32 `json:"time"`
+	Expire    uint32 `json:"expire"`
+	TimeStr   string `json:"time_str"`
+	ExpireStr string `json:"expire_str"`
+	I         string `json:"I"`
+	J         string `json:"J"`
+	K         string `json:"K"`
+	Size      uint64 `json:"Size"`
+	R         string `json:"sig_r"`
+	S         string `json:"sig_s"`
+	Nonce     uint64 `json:"nonce"`
+}
+
 type RawMessageHeader struct {
 	version  string
 	time     uint32
@@ -113,21 +129,6 @@ type RawMessageHeader struct {
 }
 
 type RawMessageHeaderSlice []RawMessageHeader
-
-type MessageHeaderJSON struct {
-	Version   string `json:"version"`
-	Time      uint32 `json:"time"`
-	Expire    uint32 `json:"expire"`
-	TimeStr   string `json:"time_str"`
-	ExpireStr string `json:"expire_str"`
-	I         string `json:"I"`
-	J         string `json:"J"`
-	K         string `json:"K"`
-	Size      uint64 `json:"Size"`
-	R         string `json:"sig_r"`
-	S         string `json:"sig_s"`
-	Nonce     uint64 `json:"nonce"`
-}
 
 func (z *RawMessageHeader) deserializeV1(s string) error {
 	var err error
@@ -387,4 +388,94 @@ func (z *RawMessageHeader) JSON() *MessageHeaderJSON {
 	r.Nonce = z.nonce
 
 	return r
+}
+
+func (h *RawMessageHeader) dbKeys(servertime uint32) (dbk *dbkeys, err error) {
+	dbk = new(dbkeys)
+	dbk.date, err = hex.DecodeString(fmt.Sprintf("D0%08X", h.time))
+	if err != nil {
+		return nil, err
+	}
+	dbk.date = append(dbk.date, h.I...)
+	dbk.servertime, err = hex.DecodeString(fmt.Sprintf("C0%08X", servertime))
+	if err != nil {
+		return nil, err
+	}
+	dbk.servertime = append(dbk.servertime, h.I...)
+	dbk.expire, err = hex.DecodeString(fmt.Sprintf("E0%08X", h.expire))
+	if err != nil {
+		return nil, err
+	}
+	dbk.expire = append(dbk.expire, h.I...)
+	dbk.I = h.I
+	return dbk, err
+}
+
+type FullMessageHeader struct {
+	rmh RawMessageHeader
+	I   big.Int
+	J   big.Int
+	K   big.Int
+	r   big.Int
+	s   big.Int
+}
+
+func padbytes(x *big.Int, nbyte int) []byte {
+	if x.Sign() < 0 {
+		return nil
+	}
+	lsbytes := x.Bytes()
+	lenls := len(lsbytes)
+	if lenls > nbyte {
+		return nil
+	} else if lenls == nbyte {
+		return lsbytes
+	}
+	pad := make([]byte, nbyte)
+	copy(pad[(nbyte-lenls):], lsbytes[:])
+	return pad
+}
+
+func (z *FullMessageHeader) Serialize() string {
+	z.rmh.I = padbytes(&z.I, 33)
+	z.rmh.J = padbytes(&z.J, 33)
+	z.rmh.K = padbytes(&z.K, 33)
+	z.rmh.r = padbytes(&z.r, 32)
+	z.rmh.s = padbytes(&z.s, 32)
+	return z.rmh.Serialize()
+}
+
+func (z *FullMessageHeader) Deserialize(s string) error {
+	err := z.rmh.Deserialize(s)
+	if err != nil {
+		return err
+	}
+	z.I.SetBytes(z.rmh.I)
+	z.J.SetBytes(z.rmh.J)
+	z.K.SetBytes(z.rmh.K)
+	z.r.SetBytes(z.rmh.r)
+	z.s.SetBytes(z.rmh.s)
+	return nil
+}
+
+func (z *FullMessageHeader) MessageTime() time.Time {
+	return z.rmh.MessageTime()
+}
+
+func (z *FullMessageHeader) ExpireTime() time.Time {
+	return z.rmh.ExpireTime()
+}
+
+func (z *FullMessageHeader) IKey() []byte {
+	return padbytes(&z.I, 33)
+}
+
+func (z *FullMessageHeader) Hash() []byte {
+	hashval := sha256.Sum256([]byte(z.Serialize()))
+	return hashval[:]
+}
+
+func (z *FullMessageHeader) dbKeys(servertime uint32) (dbk *dbkeys, err error) {
+	z.rmh.I = padbytes(&z.I, 33)
+	return z.rmh.dbKeys(servertime)
 }

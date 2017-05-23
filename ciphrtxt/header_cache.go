@@ -239,27 +239,6 @@ type dbkeys struct {
 	I          []byte
 }
 
-func (h RawMessageHeader) dbKeys(servertime uint32) (dbk *dbkeys, err error) {
-	dbk = new(dbkeys)
-	dbk.date, err = hex.DecodeString(fmt.Sprintf("D0%08X", h.time))
-	if err != nil {
-		return nil, err
-	}
-	dbk.date = append(dbk.date, h.I...)
-	dbk.servertime, err = hex.DecodeString(fmt.Sprintf("C0%08X", servertime))
-	if err != nil {
-		return nil, err
-	}
-	dbk.servertime = append(dbk.servertime, h.I...)
-	dbk.expire, err = hex.DecodeString(fmt.Sprintf("E0%08X", h.expire))
-	if err != nil {
-		return nil, err
-	}
-	dbk.expire = append(dbk.expire, h.I...)
-	dbk.I = h.I
-	return dbk, err
-}
-
 func serializeUint32(u uint32) []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, u)
