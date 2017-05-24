@@ -148,8 +148,8 @@ func NewWSMessageTimeResponse() (wsm *WSMessage) {
 	return wsm
 }
 
-func NewWSMessageHeaderReponse(hdr MessageHeader) (wsm *WSMessage) {
-	hdrBody := hdr.Serialize()
+func NewWSMessageHeaderResponse(hdr MessageHeader) (wsm *WSMessage) {
+	hdrBody := hdr.ExportBytes()
 	wsm = new(WSMessage)
 	wsm.Ver = 0x0001
 	wsm.Type = WSResponseTypeHeader

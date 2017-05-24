@@ -33,18 +33,18 @@ import (
 	"bytes"
 	//"math/big"
 	//"math/rand"
-	//"net/http"
+	"net/http"
 	//"io"
-	//"io/ioutil"
 	"encoding/binary"
+	"io/ioutil"
 	//"encoding/base64"
 	//"encoding/hex"
-	//"encoding/json"
+	"encoding/json"
 	"fmt"
 	//"math/rand"
 	//"os"
 	//"strconv"
-	//"strings"
+	"strings"
 	//"sync"
 	"time"
 )
@@ -119,7 +119,7 @@ func TestWSMSerializeDeserialize(t *testing.T) {
 	tAfter := uint32(time.Now().Unix())
 	trsSer := trs.SerializeMessage()
 	if trsSer == nil {
-		fmt.Println("Error serializing StatusRequest")
+		fmt.Println("Error serializing TimeResponse")
 		t.Fail()
 	}
 	fmt.Printf("Time Response serialized message:")
@@ -140,5 +140,62 @@ func TestWSMSerializeDeserialize(t *testing.T) {
 	if (responsetime < tBefore) || (tAfter < responsetime) {
 		fmt.Printf("Time Response time out of bounds")
 		t.Fail()
+	}
+}
+
+func TestWSMHeaderDeserializeSerialize(t *testing.T) {
+	res, err := http.Get("http://indigo.ciphrtxt.com:7754/api/v2/headers?since=0")
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	s := new(THeaderListResponse)
+	err = json.Unmarshal(body, &s)
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	count := int(0)
+	for _, hdr := range s.HeaderList {
+		h := new(RawMessageHeader)
+		//fmt.Printf("Ingesting header %s\n", hdr)
+		err := h.Deserialize(hdr)
+		if err != nil {
+			fmt.Printf("Error parsing header %s\n", err)
+			t.Fail()
+		}
+		hrs := NewWSMessageHeaderResponse(h)
+		hrsSer := hrs.SerializeMessage()
+		if hrsSer == nil {
+			fmt.Println("Error serializing HeaderResponse")
+			t.Fail()
+		}
+		if count < 10 {
+			fmt.Printf("Message Header Response serialized message:")
+			for i := 0; i < len(hrsSer); i++ {
+				fmt.Printf("%02X", hrsSer[i])
+			}
+			count += 1
+			fmt.Println("")
+		}
+		hrsDes, err := DeserializeWSMessage(hrsSer)
+		if err != nil {
+			fmt.Println("Deserialization failed:", err)
+			t.Fail()
+		}
+		nhdr := new(RawMessageHeader)
+		nhdr.ImportBytes(hrsDes.Data)
+		if (hrsDes.Ver != hrs.Ver) || (hrsDes.Type != hrs.Type) || (hrsDes.DataLen != hrs.DataLen) || (strings.Compare(hdr, nhdr.Serialize()) != 0) {
+			fmt.Println("Deserialized data mismatch")
+			t.Fail()
+		}
 	}
 }

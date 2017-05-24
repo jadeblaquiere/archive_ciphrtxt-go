@@ -63,6 +63,56 @@ func TestPadbytes(t *testing.T) {
 	}
 }
 
+func validate(mh MessageHeader) string {
+	return mh.Serialize()
+}
+
+func TestMessageHeaderInterface(t *testing.T) {
+	res, err := http.Get("http://indigo.ciphrtxt.com:7754/api/v2/headers?since=0")
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	s := new(THeaderListResponse)
+	err = json.Unmarshal(body, &s)
+	if err != nil {
+		fmt.Println("whoops:", err)
+		t.Fail()
+	}
+
+	for _, hdr := range s.HeaderList {
+		rh := new(RawMessageHeader)
+		err := rh.Deserialize(hdr)
+		if err != nil {
+			fmt.Printf("Error parsing header %s\n", err)
+			t.Fail()
+		}
+		srh := validate(rh)
+		if len(srh) == 0 {
+			fmt.Printf("Error validating header\n")
+			t.Fail()
+		}
+		fh := new(FullMessageHeader)
+		err = fh.Deserialize(hdr)
+		if err != nil {
+			fmt.Printf("Error parsing header %s\n", err)
+			t.Fail()
+		}
+		sfh := validate(fh)
+		if len(sfh) == 0 {
+			fmt.Printf("Error validating header\n", err)
+			t.Fail()
+		}
+	}
+}
+
 func TestDeserializeSerialize(t *testing.T) {
 	res, err := http.Get("http://indigo.ciphrtxt.com:7754/api/v2/headers?since=0")
 	if err != nil {

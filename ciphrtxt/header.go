@@ -44,10 +44,14 @@ import (
 
 type MessageHeader interface {
 	Serialize() string
+	ExportBytes() []byte
 	Deserialize(string) error
+	ImportBytes([]byte) error
 	MessageTime() time.Time
 	ExpireTime() time.Time
 	IKey() []byte
+	JKey() []byte
+	KKey() []byte
 	Hash() []byte
 	dbKeys(uint32) (*dbkeys, error)
 }
@@ -233,6 +237,15 @@ func (z *RawMessageHeader) Deserialize(s string) error {
 	}
 }
 
+func (z *RawMessageHeader) ImportBytes(b []byte) error {
+	if bytes.Compare(b[:3], []byte("M01")) == 0 {
+		s := string(b)
+		return z.deserializeV1(s)
+	} else {
+		return z.importBinaryHeaderV2(b)
+	}
+}
+
 func (z *RawMessageHeader) serializeV1() *SerializedMessageHeaderV1 {
 	smh := new(SerializedMessageHeaderV1)
 	I := hex.EncodeToString(z.I)
@@ -324,6 +337,14 @@ func ImportBinaryHeaderV2(smh []byte) *RawMessageHeader {
 	return z
 }
 
+func (z *RawMessageHeader) ExportBytes() []byte {
+	if strings.Compare(z.version, "0100") == 0 {
+		return []byte(string(z.SerializeV1()[:]))
+	} else {
+		return z.exportBinaryHeaderV2()[:]
+	}
+}
+
 func (z *RawMessageHeader) MessageTime() time.Time {
 	return time.Unix(int64(z.time), 0)
 }
@@ -334,6 +355,14 @@ func (z *RawMessageHeader) ExpireTime() time.Time {
 
 func (z *RawMessageHeader) IKey() (k []byte) {
 	return z.I
+}
+
+func (z *RawMessageHeader) JKey() (k []byte) {
+	return z.J
+}
+
+func (z *RawMessageHeader) KKey() (k []byte) {
+	return z.K
 }
 
 func (z *RawMessageHeader) Hash() []byte {
@@ -445,8 +474,30 @@ func (z *FullMessageHeader) Serialize() string {
 	return z.rmh.Serialize()
 }
 
+func (z *FullMessageHeader) ExportBytes() []byte {
+	z.rmh.I = padbytes(&z.I, 33)
+	z.rmh.J = padbytes(&z.J, 33)
+	z.rmh.K = padbytes(&z.K, 33)
+	z.rmh.r = padbytes(&z.r, 32)
+	z.rmh.s = padbytes(&z.s, 32)
+	return z.rmh.ExportBytes()
+}
+
 func (z *FullMessageHeader) Deserialize(s string) error {
 	err := z.rmh.Deserialize(s)
+	if err != nil {
+		return err
+	}
+	z.I.SetBytes(z.rmh.I)
+	z.J.SetBytes(z.rmh.J)
+	z.K.SetBytes(z.rmh.K)
+	z.r.SetBytes(z.rmh.r)
+	z.s.SetBytes(z.rmh.s)
+	return nil
+}
+
+func (z *FullMessageHeader) ImportBytes(b []byte) error {
+	err := z.rmh.ImportBytes(b)
 	if err != nil {
 		return err
 	}
@@ -468,6 +519,14 @@ func (z *FullMessageHeader) ExpireTime() time.Time {
 
 func (z *FullMessageHeader) IKey() []byte {
 	return padbytes(&z.I, 33)
+}
+
+func (z *FullMessageHeader) JKey() []byte {
+	return padbytes(&z.J, 33)
+}
+
+func (z *FullMessageHeader) KKey() []byte {
+	return padbytes(&z.K, 33)
 }
 
 func (z *FullMessageHeader) Hash() []byte {
