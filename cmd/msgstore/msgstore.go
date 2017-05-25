@@ -63,7 +63,7 @@ var configExtTokenPort = flag.Int("tokenport", 7764, "Token Service advertised p
 var configExternalHost = flag.String("exthost", "", "Message Service advertised hostname/ip")
 var configExternalPort = flag.Int("extport", 8080, "Message Service advertised port number")
 var configListenPort = flag.Int("listenport", 8080, "Message Service listen port number")
-var configTargetRing = flag.Int("ring", 1, "Target value for ring, default=2")
+var configTargetRing = flag.Int("ring", 0, "Target value for ring, default=0")
 
 type WSClient struct {
 	con   iris.WebsocketConnection
@@ -87,6 +87,7 @@ func (wsc *WSClient) Receive(message []byte) {
 }
 
 func (wsc *WSClient) Disconnect() {
+
 	fmt.Println("client disconnect")
 	wsc.wss.Disconnect(wsc)
 }
