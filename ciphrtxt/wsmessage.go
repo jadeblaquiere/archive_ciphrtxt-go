@@ -172,3 +172,15 @@ func NewWSMessageStatusResponse(sr *StatusResponse) (wsm *WSMessage) {
 	copy(wsm.Data[:], statusJSON[:])
 	return wsm
 }
+
+func (wsm *WSMessage) DumpMessageHeader() (rmh *RawMessageHeader) {
+	if wsm.Type != WSResponseTypeHeader {
+		return nil
+	}
+	hdr := new(RawMessageHeader)
+	err := hdr.ImportBytes(wsm.Data[:])
+	if err != nil {
+		return nil
+	}
+	return hdr
+}

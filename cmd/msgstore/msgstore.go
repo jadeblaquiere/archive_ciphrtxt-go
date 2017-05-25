@@ -73,6 +73,17 @@ type WSClient struct {
 
 func (wsc *WSClient) Receive(message []byte) {
 	fmt.Println("recv :", string(message))
+	wsm, err := ciphrtxt.DeserializeWSMessage(message)
+	if err != nil {
+		fmt.Println("WSClient : cannot deserialize message")
+		return
+	}
+	if wsm.Type == ciphrtxt.WSRequestTypeTime {
+		// respond with Time
+		tresp := ciphrtxt.NewWSMessageTimeResponse()
+		msg := tresp.SerializeMessage()
+		wsc.con.EmitMessage(msg)
+	}
 }
 
 func (wsc *WSClient) Disconnect() {

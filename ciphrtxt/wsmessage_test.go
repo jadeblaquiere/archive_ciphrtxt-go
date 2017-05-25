@@ -191,9 +191,11 @@ func TestWSMHeaderDeserializeSerialize(t *testing.T) {
 			fmt.Println("Deserialization failed:", err)
 			t.Fail()
 		}
-		nhdr := new(RawMessageHeader)
-		nhdr.ImportBytes(hrsDes.Data)
-		if (hrsDes.Ver != hrs.Ver) || (hrsDes.Type != hrs.Type) || (hrsDes.DataLen != hrs.DataLen) || (strings.Compare(hdr, nhdr.Serialize()) != 0) {
+		nhdr := hrsDes.DumpMessageHeader()
+		if nhdr == nil {
+			fmt.Println("Error deserializing message header")
+			t.Fail()
+		} else if (hrsDes.Ver != hrs.Ver) || (hrsDes.Type != hrs.Type) || (hrsDes.DataLen != hrs.DataLen) || (strings.Compare(hdr, nhdr.Serialize()) != 0) {
 			fmt.Println("Deserialized data mismatch")
 			t.Fail()
 		}
