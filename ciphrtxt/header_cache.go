@@ -190,7 +190,12 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 		hc.wscon.SetCloseHandler(hc.websocketClose)
 		go hc.websocketReceive()
 		go hc.websocketSendPump()
-		hc.wscon.SetPongHandler(func(string) error { hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval)); return nil })
+		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
+		hc.wscon.SetPongHandler(func(string) error {
+			fmt.Printf("HS-ws: received ping from %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
+			hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
+			return nil
+		})
 	}
 
 	fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
@@ -200,7 +205,7 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 func (hc *HeaderCache) websocketReceive() {
 	for {
 		mtype, message, err := hc.wscon.ReadMessage()
-		fmt.Printf("HC-ws: received message type %d\n", mtype)
+		fmt.Printf("HC-ws: received message type %d from %s\n", mtype, hc.wscon.UnderlyingConn().RemoteAddr().String())
 		if (mtype == websocket.TextMessage) || (mtype == websocket.BinaryMessage) {
 			if err != nil {
 				panic(err)
@@ -211,7 +216,7 @@ func (hc *HeaderCache) websocketReceive() {
 			if err == nil {
 				panic("HC-ws: websocket received unknown message without specified error")
 			}
-			fmt.Printf("HC-ws: aborting read thread : %s\n", err)
+			fmt.Printf("HC-ws: aborting read pump from %s : %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String(), err)
 			return
 		}
 	}
@@ -239,8 +244,9 @@ func (hc *HeaderCache) websocketSendPump() {
 				}
 			}
 		case <-ticker.C:
-			fmt.Printf("HS-ws: sending ping\n")
+			fmt.Printf("HS-ws: sending ping to %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
 			if err := hc.wscon.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+				fmt.Printf("HS-ws: error writing to %s, closing write pump\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
 				return
 			}
 		}
