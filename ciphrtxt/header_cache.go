@@ -54,6 +54,8 @@ const apiHeadersSince string = "api/v2/headers?since="
 const apiMessagesDownload string = "api/v2/messages/"
 const apiDownloadNoRecurse string = "?recurse=false"
 const apiWebsocketEndpoint string = "wsapi/v2/ws"
+const apiWebsocketPingInterval = 5 * time.Second
+const apiWebsocketPongInterval = 30 * time.Second
 
 const refreshMinDelay = 30
 
@@ -123,6 +125,7 @@ type HeaderCache struct {
 	NetworkErrors     int
 	PeerInfo          []PeerItemResponse
 	wscon             *websocket.Conn
+	wssend            chan []byte
 }
 
 // NOTE : if dbpath is empty ("") header cache will be in-memory only
@@ -186,6 +189,8 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 		hc.wscon = con
 		hc.wscon.SetCloseHandler(hc.websocketClose)
 		go hc.websocketReceive()
+		go hc.websocketSendPump()
+		hc.wscon.SetPongHandler(func(string) error { hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval)); return nil })
 	}
 
 	fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
@@ -208,6 +213,36 @@ func (hc *HeaderCache) websocketReceive() {
 			}
 			fmt.Printf("HC-ws: aborting read thread : %s\n", err)
 			return
+		}
+	}
+}
+
+func (hc *HeaderCache) WebsocketSend(message []byte) {
+	hc.wssend <- message
+}
+
+func (hc *HeaderCache) websocketSendPump() {
+	ticker := time.NewTicker(apiWebsocketPingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case msg := <-hc.wssend:
+			if len(msg) > 0 {
+				w, err := hc.wscon.NextWriter(websocket.TextMessage)
+				if err != nil {
+					return
+				}
+				w.Write(msg)
+
+				if err := w.Close(); err != nil {
+					return
+				}
+			}
+		case <-ticker.C:
+			fmt.Printf("HS-ws: sending ping\n")
+			if err := hc.wscon.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+				return
+			}
 		}
 	}
 }
