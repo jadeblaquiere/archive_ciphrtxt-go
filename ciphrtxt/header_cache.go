@@ -53,7 +53,7 @@ const apiPeer string = "api/v2/peers"
 const apiHeadersSince string = "api/v2/headers?since="
 const apiMessagesDownload string = "api/v2/messages/"
 const apiDownloadNoRecurse string = "?recurse=false"
-const apiWebsocketEndpoint string = "wsapi/v2/ws/"
+const apiWebsocketEndpoint string = "wsapi/v2/ws"
 
 const refreshMinDelay = 30
 
@@ -111,6 +111,7 @@ type HeaderCache struct {
 	host              string
 	port              uint16
 	baseurl           string
+	wsurl             string
 	db                *leveldb.DB
 	syncMutex         sync.Mutex
 	syncInProgress    bool
@@ -129,6 +130,7 @@ type HeaderCache struct {
 func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, err error) {
 	hc = new(HeaderCache)
 	hc.baseurl = fmt.Sprintf("http://%s:%d/", host, port)
+	hc.wsurl = fmt.Sprintf("ws://%s:%d/", host, port)
 	hc.host = host
 	hc.port = port
 
@@ -177,11 +179,12 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 
 	var dialer *websocket.Dialer
 
-	con, _, err := dialer.Dial(hc.baseurl+apiWebsocketEndpoint, nil)
+	con, _, err := dialer.Dial(hc.wsurl+apiWebsocketEndpoint, nil)
 	if err != nil {
-		fmt.Printf("Unable to connect to %s, proceeding using polling only\n", hc.baseurl+apiWebsocketEndpoint)
+		fmt.Printf("Unable to connect to websocket endpoint %s, proceeding by polling only\n", hc.wsurl+apiWebsocketEndpoint)
 	} else {
 		hc.wscon = con
+		hc.wscon.SetCloseHandler(hc.websocketClose)
 		go hc.websocketReceive()
 	}
 
@@ -191,13 +194,28 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 
 func (hc *HeaderCache) websocketReceive() {
 	for {
-		_, message, err := hc.wscon.ReadMessage()
-		if err != nil {
-			panic(err)
-		}
+		mtype, message, err := hc.wscon.ReadMessage()
+		fmt.Printf("HC-ws: received message type %d\n", mtype)
+		if (mtype == websocket.TextMessage) || (mtype == websocket.BinaryMessage) {
+			if err != nil {
+				panic(err)
+			}
 
-		fmt.Println("recv:", string(message))
+			fmt.Println("recv:", string(message))
+		} else {
+			if err == nil {
+				panic("HC-ws: websocket received unknown message without specified error")
+			}
+			fmt.Printf("HC-ws: aborting read thread : %s\n", err)
+			return
+		}
 	}
+}
+
+func (hc *HeaderCache) websocketClose(code int, text string) error {
+	fmt.Printf("HC-ws: received CLOSE code %d : %s\n", code, text)
+	hc.wscon = nil
+	return nil
 }
 
 func (hc *HeaderCache) recount() (err error) {

@@ -63,7 +63,7 @@ var configExtTokenPort = flag.Int("tokenport", 7764, "Token Service advertised p
 var configExternalHost = flag.String("exthost", "", "Message Service advertised hostname/ip")
 var configExternalPort = flag.Int("extport", 8080, "Message Service advertised port number")
 var configListenPort = flag.Int("listenport", 8080, "Message Service listen port number")
-var configTargetRing = flag.Int("ring", 0, "Target value for ring, default=0")
+var configTargetRing = flag.Int("ring", 2, "Target value for ring, default=2")
 
 type WSClient struct {
 	con   iris.WebsocketConnection
@@ -101,6 +101,7 @@ func (wss *WSServer) Connect(con iris.WebsocketConnection) {
 	wss.listMutex.Lock()
 	defer wss.listMutex.Unlock()
 
+	fmt.Println("WSS: incoming connection")
 	c := &WSClient{con: con, wss: wss}
 	wss.clients = append(wss.clients, c)
 
@@ -219,7 +220,7 @@ func main() {
 	api.Get("/peers.html", peers)
 	api.StaticWeb("/static", "./static", 1)
 
-	api.Config.Websocket.Endpoint = "/wsapi/v2/ws/"
+	api.Config.Websocket.Endpoint = "/wsapi/v2/ws"
 	api.Websocket.OnConnection(wss.Connect)
 
 	listenString := ":" + strconv.Itoa(*configListenPort)
