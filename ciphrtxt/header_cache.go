@@ -190,12 +190,6 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 		hc.wscon.SetCloseHandler(hc.websocketClose)
 		go hc.websocketReceive()
 		go hc.websocketSendPump()
-		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
-		hc.wscon.SetPongHandler(func(string) error {
-			fmt.Printf("HS-ws: received pong from %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-			hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
-			return nil
-		})
 	}
 
 	fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
@@ -203,6 +197,12 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 }
 
 func (hc *HeaderCache) websocketReceive() {
+	hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
+	hc.wscon.SetPongHandler(func(string) error {
+		fmt.Printf("HS-ws: received pong from %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
+		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
+		return nil
+	})
 	for {
 		mtype, message, err := hc.wscon.ReadMessage()
 		fmt.Printf("HC-ws: received message type %d from %s\n", mtype, hc.wscon.UnderlyingConn().RemoteAddr().String())
