@@ -54,8 +54,8 @@ const apiHeadersSince string = "api/v2/headers?since="
 const apiMessagesDownload string = "api/v2/messages/"
 const apiDownloadNoRecurse string = "?recurse=false"
 const apiWebsocketEndpoint string = "wsapi/v2/ws"
-const apiWebsocketPingInterval = 5 * time.Second
-const apiWebsocketPongInterval = 30 * time.Second
+const apiWebsocketPongInterval = 60 * time.Second
+const apiWebsocketPingInterval = (9 * apiWebsocketPongInterval) / 10
 
 const refreshMinDelay = 30
 
@@ -192,7 +192,7 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 		go hc.websocketSendPump()
 		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
 		hc.wscon.SetPongHandler(func(string) error {
-			fmt.Printf("HS-ws: received ping from %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
+			fmt.Printf("HS-ws: received pong from %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
 			hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
 			return nil
 		})
