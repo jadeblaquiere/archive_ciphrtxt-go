@@ -221,6 +221,11 @@ func main() {
 	api.StaticWeb("/static", "./static", 1)
 
 	api.Config.Websocket.Endpoint = "/wsapi/v2/ws"
+	api.Config.Websocket.BinaryMessages = true
+	api.Config.Websocket.WriteTimeout = 60 * time.Second
+	// this config option requires a patch which is not in kataras/iris.v5 yet - pull request submitted
+	// from github.com/jadeblaquiere/iris 5.0.0 branch
+	api.Config.Websocket.ReadTimeout = 60 * time.Second // read the preceding comment if go build fails
 	api.Websocket.OnConnection(wss.Connect)
 
 	listenString := ":" + strconv.Itoa(*configListenPort)

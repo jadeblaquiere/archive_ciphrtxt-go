@@ -56,6 +56,8 @@ const apiDownloadNoRecurse string = "?recurse=false"
 const apiWebsocketEndpoint string = "wsapi/v2/ws"
 const apiWebsocketPongInterval = 60 * time.Second
 const apiWebsocketPingInterval = (9 * apiWebsocketPongInterval) / 10
+const apiWebsocketWriteWait = 60 * time.Second
+const apiWebsocketReadWait = 60 * time.Second
 
 const refreshMinDelay = 30
 
@@ -197,14 +199,15 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 }
 
 func (hc *HeaderCache) websocketReceive() {
-	hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
+	hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketReadWait))
 	hc.wscon.SetPongHandler(func(string) error {
 		fmt.Printf("HS-ws: received pong from %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketPongInterval))
+		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketReadWait))
 		return nil
 	})
 	for {
 		mtype, message, err := hc.wscon.ReadMessage()
+		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketReadWait))
 		fmt.Printf("HC-ws: received message type %d from %s\n", mtype, hc.wscon.UnderlyingConn().RemoteAddr().String())
 		if (mtype == websocket.TextMessage) || (mtype == websocket.BinaryMessage) {
 			if err != nil {
@@ -229,23 +232,28 @@ func (hc *HeaderCache) WebsocketSend(message []byte) {
 func (hc *HeaderCache) websocketSendPump() {
 	ticker := time.NewTicker(apiWebsocketPingInterval)
 	defer ticker.Stop()
+	hc.wscon.SetWriteDeadline(time.Now().Add(apiWebsocketWriteWait))
 	for {
 		select {
 		case msg := <-hc.wssend:
+			hc.wscon.SetWriteDeadline(time.Now().Add(apiWebsocketWriteWait))
 			if len(msg) > 0 {
 				w, err := hc.wscon.NextWriter(websocket.TextMessage)
 				if err != nil {
+					fmt.Printf("HS-ws: error getting nextwriter for %s, closing write pump\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
 					return
 				}
 				w.Write(msg)
 
 				if err := w.Close(); err != nil {
+					fmt.Printf("HS-ws: error closing writer for %s, closing write pump\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
 					return
 				}
 			}
 		case <-ticker.C:
+			hc.wscon.SetWriteDeadline(time.Now().Add(apiWebsocketWriteWait))
 			fmt.Printf("HS-ws: sending ping to %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-			if err := hc.wscon.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+			if err := hc.wscon.WriteControl(websocket.PingMessage, []byte{}, time.Time{}); err != nil {
 				fmt.Printf("HS-ws: error writing to %s, closing write pump\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
 				return
 			}
