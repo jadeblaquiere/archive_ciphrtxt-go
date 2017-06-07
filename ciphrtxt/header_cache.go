@@ -44,7 +44,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	cwebsocket "github.com/jadeblaquiere/websocket-client"
+	"github.com/kataras/iris/websocket"
 )
 
 const apiStatus string = "api/v2/status"
@@ -126,8 +127,7 @@ type HeaderCache struct {
 	Count             int
 	NetworkErrors     int
 	PeerInfo          []PeerItemResponse
-	wscon             *websocket.Conn
-	wssend            chan []byte
+	wsclient          *cwebsocket.Client
 }
 
 // NOTE : if dbpath is empty ("") header cache will be in-memory only
@@ -182,89 +182,27 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 		fmt.Printf("HeaderCache recovered checkpoint @ tstamp %d\n", hc.serverTime)
 	}
 
-	var dialer *websocket.Dialer
+	dialer := new(cwebsocket.WSDialer)
 
-	con, _, err := dialer.Dial(hc.wsurl+apiWebsocketEndpoint, nil)
+	// fmt.Println("Dialing : ", string(hc.wsurl+apiWebsocketEndpoint))
+
+	client, _, err := dialer.Dial(string(hc.wsurl+apiWebsocketEndpoint), nil, websocket.Config{
+		ReadTimeout:     60 * time.Second,
+		WriteTimeout:    60 * time.Second,
+		PingPeriod:      9 * 6 * time.Second,
+		PongTimeout:     60 * time.Second,
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		BinaryMessages:  true,
+	})
 	if err != nil {
 		fmt.Printf("Unable to connect to websocket endpoint %s, proceeding by polling only\n", hc.wsurl+apiWebsocketEndpoint)
 	} else {
-		hc.wscon = con
-		hc.wscon.SetCloseHandler(hc.websocketClose)
-		go hc.websocketReceive()
-		go hc.websocketSendPump()
+		hc.wsclient = client
 	}
 
 	fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
 	return hc, nil
-}
-
-func (hc *HeaderCache) websocketReceive() {
-	hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketReadWait))
-	hc.wscon.SetPongHandler(func(string) error {
-		fmt.Printf("HS-ws: received pong from %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketReadWait))
-		return nil
-	})
-	for {
-		mtype, message, err := hc.wscon.ReadMessage()
-		hc.wscon.SetReadDeadline(time.Now().Add(apiWebsocketReadWait))
-		fmt.Printf("HC-ws: received message type %d from %s\n", mtype, hc.wscon.UnderlyingConn().RemoteAddr().String())
-		if (mtype == websocket.TextMessage) || (mtype == websocket.BinaryMessage) {
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println("recv:", string(message))
-		} else {
-			if err == nil {
-				panic("HC-ws: websocket received unknown message without specified error")
-			}
-			fmt.Printf("HC-ws: aborting read pump from %s : %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String(), err)
-			return
-		}
-	}
-}
-
-func (hc *HeaderCache) WebsocketSend(message []byte) {
-	hc.wssend <- message
-}
-
-func (hc *HeaderCache) websocketSendPump() {
-	ticker := time.NewTicker(apiWebsocketPingInterval)
-	defer ticker.Stop()
-	hc.wscon.SetWriteDeadline(time.Now().Add(apiWebsocketWriteWait))
-	for {
-		select {
-		case msg := <-hc.wssend:
-			hc.wscon.SetWriteDeadline(time.Now().Add(apiWebsocketWriteWait))
-			if len(msg) > 0 {
-				w, err := hc.wscon.NextWriter(websocket.TextMessage)
-				if err != nil {
-					fmt.Printf("HS-ws: error getting nextwriter for %s, closing write pump\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-					return
-				}
-				w.Write(msg)
-
-				if err := w.Close(); err != nil {
-					fmt.Printf("HS-ws: error closing writer for %s, closing write pump\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-					return
-				}
-			}
-		case <-ticker.C:
-			hc.wscon.SetWriteDeadline(time.Now().Add(apiWebsocketWriteWait))
-			fmt.Printf("HS-ws: sending ping to %s\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-			if err := hc.wscon.WriteControl(websocket.PingMessage, []byte{}, time.Time{}); err != nil {
-				fmt.Printf("HS-ws: error writing to %s, closing write pump\n", hc.wscon.UnderlyingConn().RemoteAddr().String())
-				return
-			}
-		}
-	}
-}
-
-func (hc *HeaderCache) websocketClose(code int, text string) error {
-	fmt.Printf("HC-ws: received CLOSE code %d : %s\n", code, text)
-	hc.wscon = nil
-	return nil
 }
 
 func (hc *HeaderCache) recount() (err error) {

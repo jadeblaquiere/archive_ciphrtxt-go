@@ -37,6 +37,7 @@ import (
 	"encoding/hex"
 	"io"
 	"math/big"
+	"net/http"
 	"os"
 	"runtime"
 	"sort"
@@ -47,8 +48,12 @@ import (
 
 	"github.com/jadeblaquiere/ciphrtxt-go/ciphrtxt"
 	"github.com/jadeblaquiere/cttd/btcec"
-	"gopkg.in/iris-contrib/middleware.v5/logger"
-	"gopkg.in/kataras/iris.v5"
+	"github.com/kataras/iris"
+	"github.com/kataras/iris/context"
+	"github.com/kataras/iris/core/host"
+	"github.com/kataras/iris/middleware/logger"
+	"github.com/kataras/iris/view"
+	"github.com/kataras/iris/websocket"
 )
 
 var ms *ciphrtxt.MessageStore
@@ -66,7 +71,7 @@ var configListenPort = flag.Int("listenport", 8080, "Message Service listen port
 var configTargetRing = flag.Int("ring", 2, "Target value for ring, default=2")
 
 type WSClient struct {
-	con   iris.WebsocketConnection
+	con   websocket.Connection
 	wss   *WSServer
 	mutex sync.Mutex
 }
@@ -95,9 +100,13 @@ func (wsc *WSClient) Disconnect() {
 type WSServer struct {
 	clients   []*WSClient
 	listMutex sync.Mutex
+	app       *iris.Application
+	srv       *http.Server
+	super     *host.Supervisor
+	ws        websocket.Server
 }
 
-func (wss *WSServer) Connect(con iris.WebsocketConnection) {
+func (wss *WSServer) Connect(con websocket.Connection) {
 	wss.listMutex.Lock()
 	defer wss.listMutex.Unlock()
 
@@ -204,6 +213,7 @@ func main() {
 	wss := &WSServer{}
 
 	api := iris.New()
+	wss.app = api
 	api.Use(customLogger)
 	api.Get("/", index)
 	api.Get("/api/v2/headers", get_headers)
@@ -218,42 +228,59 @@ func main() {
 	api.Get("/index", index)
 	api.Get("/index.html", index)
 	api.Get("/peers.html", peers)
-	api.StaticWeb("/static", "./static", 1)
+	api.StaticWeb("/static", "./static")
 
-	api.Config.Websocket.Endpoint = "/wsapi/v2/ws"
-	api.Config.Websocket.BinaryMessages = true
-	api.Config.Websocket.WriteTimeout = 60 * time.Second
-	// this config option requires a patch which is not in kataras/iris.v5 yet - pull request submitted
-	// from github.com/jadeblaquiere/iris 5.0.0 branch
-	api.Config.Websocket.ReadTimeout = 60 * time.Second // read the preceding comment if go build fails
-	api.Websocket.OnConnection(wss.Connect)
+	ws := websocket.New(websocket.Config{
+		ReadTimeout:     60 * time.Second,
+		WriteTimeout:    60 * time.Second,
+		ReadBufferSize:  4096,
+		WriteBufferSize: 4096,
+		BinaryMessages:  true,
+		Endpoint:        "/wsapi/v2/ws",
+	})
+	ws.OnConnection(wss.Connect)
+
+	// Attach the websocket server.
+	ws.Attach(api)
+
+	// Attache the template engine
+	tmpl := view.HTML("./templates", ".html")
+
+	api.AttachView(tmpl)
 
 	listenString := ":" + strconv.Itoa(*configListenPort)
-	api.Listen(listenString)
+	//api.Listen(listenString)
 	//api.Listen(":8080")
+	wss.srv = &http.Server{Addr: listenString}
+	wss.super = host.New(wss.srv)
+
+	wss.app.Run(iris.Server(wss.srv))
 }
 
-func index(ctx *iris.Context) {
+func index(ctx context.Context) {
 	now := uint32(time.Now().Unix())
 	lastHr, err := ms.FindSince(now - 3600)
 	sort.Sort(sort.Reverse(ciphrtxt.MessageFileSlice(lastHr)))
 	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(500)
 		return
 	}
 	msgs := make([]ciphrtxt.MessageHeaderJSON, 0)
 	for _, m := range lastHr {
 		msgs = append(msgs, *(m.RawMessageHeader.JSON()))
 	}
-	ctx.Render("index.html", struct {
-		TimeMinus5 int
-		Messages   []ciphrtxt.MessageHeaderJSON
-	}{TimeMinus5: int(time.Now().Unix() - 300), Messages: msgs})
+	ctx.ViewData("Messages", msgs)
+	ctx.ViewData("TimeMinus5", int(time.Now().Unix()-300))
+	ctx.View("index.html")
+	// ctx.MustRender("index.html", struct {
+	// 	TimeMinus5 int
+	// 	Messages   []ciphrtxt.MessageHeaderJSON
+	// }{TimeMinus5: int(time.Now().Unix() - 300), Messages: msgs})
 }
 
-func peers(ctx *iris.Context) {
+func peers(ctx context.Context) {
 	peerInfo := make([]ciphrtxt.PeerJSON, 0)
-	now := uint32(time.Now().Unix())
+	// now := uint32(time.Now().Unix())
 	lhc := ms.LHC
 	pi := new(ciphrtxt.PeerJSON)
 	pi.Host = *configExternalHost
@@ -269,13 +296,16 @@ func peers(ctx *iris.Context) {
 		pi := p.HC.GetPeerStatsJSON()
 		peerInfo = append(peerInfo, *pi)
 	}
-	ctx.Render("peers.html", struct {
-		TimeMinus5 int
-		Peers      []ciphrtxt.PeerJSON
-	}{TimeMinus5: int(now - 300), Peers: peerInfo})
+	ctx.ViewData("Peers", peerInfo)
+	ctx.ViewData("TimeMinus5", int(time.Now().Unix()-300))
+	ctx.View("peers.html")
+	// ctx.Render("peers.html", struct {
+	// 	TimeMinus5 int
+	// 	Peers      []ciphrtxt.PeerJSON
+	// }{TimeMinus5: int(now - 300), Peers: peerInfo})
 }
 
-func get_headers(ctx *iris.Context) {
+func get_headers(ctx context.Context) {
 	since, err := ctx.URLParamInt("since")
 	if err != nil {
 		since = 0
@@ -286,7 +316,7 @@ func get_headers(ctx *iris.Context) {
 	lhc := ms.LHC
 	hdrs, err := lhc.FindSince(uint32(since))
 	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 	res := make([]string, len(hdrs))
@@ -295,32 +325,44 @@ func get_headers(ctx *iris.Context) {
 		res[i] = h.Serialize()
 	}
 
-	ctx.JSON(iris.StatusOK, ciphrtxt.HeaderListResponse{Headers: res})
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(ciphrtxt.HeaderListResponse{Headers: res})
 }
 
-func get_header_info(ctx *iris.Context) {
-	msgid := ctx.Param("msgid")
+func get_header_info(ctx context.Context) {
+	msgid := string("")
+	params := ctx.Params()[:]
+	for _, p := range params {
+		if p.Key == "msgid" {
+			msgid = p.Value
+		}
+	}
+	if msgid == "" {
+		ctx.StatusCode(iris.StatusBadRequest)
+		return
+	}
 	I, err := hex.DecodeString(msgid)
 	if err != nil {
-		ctx.EmitError(iris.StatusBadRequest)
+		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
 	m, err := ms.FindByI(I)
 	if err != nil {
-		ctx.EmitError(iris.StatusNotFound)
+		ctx.StatusCode(iris.StatusNotFound)
 		return
 	}
 
 	if m == nil {
-		ctx.EmitError(iris.StatusNotFound)
+		ctx.StatusCode(iris.StatusNotFound)
 		return
 	}
 
-	ctx.JSON(iris.StatusOK, m.RawMessageHeader.JSON())
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(m.RawMessageHeader.JSON())
 }
 
-func get_messages(ctx *iris.Context) {
+func get_messages(ctx context.Context) {
 	since, err := ctx.URLParamInt("since")
 	if err != nil {
 		since = 0
@@ -330,7 +372,7 @@ func get_messages(ctx *iris.Context) {
 
 	msgs, err := ms.FindSince(uint32(since))
 	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 	res := make([]string, len(msgs))
@@ -339,21 +381,23 @@ func get_messages(ctx *iris.Context) {
 		res[i] = hex.EncodeToString(m.IKey())
 	}
 
-	ctx.JSON(iris.StatusOK, ciphrtxt.MessageListResponse{Messages: res})
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(ciphrtxt.MessageListResponse{Messages: res})
 }
 
-func get_peers(ctx *iris.Context) {
-	plr := ms.LHC.ListPeers()
+func get_peers(ctx context.Context) {
+	prl := ms.LHC.ListPeers()
 
-	ctx.JSON(iris.StatusOK, plr)
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(prl)
 }
 
-func add_peer(ctx *iris.Context) {
+func add_peer(ctx context.Context) {
 	var pir ciphrtxt.PeerItemResponse
 
 	err := ctx.ReadJSON(&pir)
 	if err != nil {
-		ctx.EmitError(iris.StatusBadRequest)
+		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
@@ -361,15 +405,25 @@ func add_peer(ctx *iris.Context) {
 
 	ms.LHC.AddPeer(pir.Host, pir.Port)
 
-	ctx.Text(iris.StatusOK, "")
+	ctx.StatusCode(iris.StatusOK)
 }
 
-func download_message(ctx *iris.Context) {
-	msgid := ctx.Param("msgid")
-	recurse := ctx.Param("recurse")
+func download_message(ctx context.Context) {
+	msgid := string("")
+	recurse := ctx.URLParam("recurse")
+	params := ctx.Params()[:]
+	for _, p := range params {
+		if p.Key == "msgid" {
+			msgid = p.Value
+		}
+	}
+	if msgid == "" {
+		ctx.StatusCode(iris.StatusBadRequest)
+		return
+	}
 	I, err := hex.DecodeString(msgid)
 	if err != nil {
-		ctx.EmitError(iris.StatusBadRequest)
+		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
@@ -377,34 +431,29 @@ func download_message(ctx *iris.Context) {
 	if strings.ToLower(recurse) == "false" {
 		m, err = ms.FindByI(I)
 		if err != nil {
-			ctx.EmitError(iris.StatusNotFound)
+			ctx.StatusCode(iris.StatusNotFound)
 			return
 		}
 	} else {
 		m, err = ms.FindOrFetchByI(I)
 		if err != nil {
-			ctx.EmitError(iris.StatusNotFound)
+			ctx.StatusCode(iris.StatusNotFound)
 			return
 		}
 	}
 
 	if m == nil {
-		ctx.EmitError(iris.StatusNotFound)
+		ctx.StatusCode(iris.StatusNotFound)
 		return
 	}
 
 	ctx.ServeFile(m.Filepath, false)
 }
 
-func upload_message(ctx *iris.Context) {
-	message, err := ctx.FormFile("message")
+func upload_message(ctx context.Context) {
+	src, _, err := ctx.FormFile("message")
 	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
-		return
-	}
-	src, err := message.Open()
-	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 	defer src.Close()
@@ -412,12 +461,12 @@ func upload_message(ctx *iris.Context) {
 	recvpath := "./receive/" + strconv.Itoa(int(time.Now().UnixNano()))
 	dst, err := os.Create(recvpath)
 	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 
 	if _, err = io.Copy(dst, src); err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(iris.StatusInternalServerError)
 		dst.Close()
 		return
 	}
@@ -426,7 +475,7 @@ func upload_message(ctx *iris.Context) {
 
 	m := ciphrtxt.Ingest(recvpath)
 	if m == nil {
-		ctx.EmitError(iris.StatusBadRequest)
+		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
@@ -435,20 +484,21 @@ func upload_message(ctx *iris.Context) {
 	//fmt.Printf("moving to %s\n", filemove)
 	err = m.Move(filemove)
 	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 
 	servertime, err := ms.InsertFile(filemove)
 	if err != nil {
-		ctx.EmitError(iris.StatusInternalServerError)
+		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 
-	ctx.JSON(iris.StatusOK, ciphrtxt.MessageUploadResponse{Header: m.RawMessageHeader.Serialize(), Servertime: servertime})
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(ciphrtxt.MessageUploadResponse{Header: m.RawMessageHeader.Serialize(), Servertime: servertime})
 }
 
-func get_status(ctx *iris.Context) {
+func get_status(ctx context.Context) {
 	r_storage := ciphrtxt.StatusStorageResponse{
 		Headers:     ms.LHC.Count,
 		Messages:    ms.Count,
@@ -477,10 +527,12 @@ func get_status(ctx *iris.Context) {
 		Version: "0.2.0",
 	}
 
-	ctx.JSON(iris.StatusOK, r_status)
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(r_status)
 }
 
-func get_time(ctx *iris.Context) {
+func get_time(ctx context.Context) {
 
-	ctx.JSON(iris.StatusOK, ciphrtxt.TimeResponse{Time: int(time.Now().Unix())})
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(ciphrtxt.TimeResponse{Time: int(time.Now().Unix())})
 }
