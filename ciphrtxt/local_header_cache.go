@@ -515,6 +515,7 @@ func (lhc *LocalHeaderCache) AddPeer(host string, port uint16) {
 func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
 	for _, p := range lhc.Peers {
 		if (p.HC.host == host) && (p.HC.port == port) {
+			fmt.Printf("addPeer: %s:%d already connected\n", host, port)
 			return nil
 		}
 	}
@@ -525,11 +526,13 @@ func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
 
 	rhc, err := OpenHeaderCache(host, port, dbpath)
 	if err != nil {
+		fmt.Printf("addPeer: %s:%d open header cache failed\n", host, port)
 		return err
 	}
 
 	err = rhc.Sync()
 	if err != nil {
+		fmt.Printf("addPeer: %s:%d sync error\n", host, port)
 		return err
 	}
 
@@ -537,6 +540,7 @@ func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
 
 	mhdrs, err := rhc.FindSince(0)
 	if err != nil {
+		fmt.Printf("addPeer: %s:%d Error finding all headers\n", host, port)
 		return err
 	}
 
@@ -616,7 +620,7 @@ func (lhc *LocalHeaderCache) DiscoverPeers(exthost string, extport uint16) (err 
 					} else {
 						if remoteNew {
 							//fmt.Printf("trying to add host")
-							err = lhc.addPeer(remote.Host, remote.Port)
+							lhc.AddPeer(remote.Host, remote.Port)
 							//if err != nil {
 							//    fmt.Printf("error adding peer: %s\n", err)
 							//}
