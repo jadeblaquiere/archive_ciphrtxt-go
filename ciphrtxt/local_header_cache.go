@@ -57,6 +57,11 @@ type peerCandidate struct {
 	port uint16
 }
 
+var defaultSeedPeers []*peerCandidate = []*peerCandidate{
+	&peerCandidate{"indigo.ciphrtxt.com", 7754},
+	&peerCandidate{"violet.ciphrtxt.com", 7754},
+}
+
 type LocalHeaderCache struct {
 	basepath                string
 	db                      *leveldb.DB
@@ -422,7 +427,12 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
 	//copy and reset candidates list
 	lhc.peerCandidateMutex.Lock()
 	candidates := lhc.peerCandidates
-	lhc.peerCandidates = make([]*peerCandidate, 0)
+	if len(candidates) == 0 {
+		candidates = make([]*peerCandidate, len(defaultSeedPeers))
+		copy(candidates, defaultSeedPeers)
+	}
+	lhc.peerCandidates = make([]*peerCandidate, len(defaultSeedPeers))
+	copy(lhc.peerCandidates, defaultSeedPeers)
 	lhc.peerCandidateMutex.Unlock()
 
 	for _, pc := range candidates {

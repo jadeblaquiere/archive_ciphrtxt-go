@@ -72,6 +72,7 @@ var configTargetRing = flag.Int("ring", 2, "Target value for ring, default=2")
 
 type WSClient struct {
 	con   websocket.Connection
+	hc    *ciphrtxt.HeaderCache
 	wss   *WSServer
 	mutex sync.Mutex
 }
@@ -89,6 +90,22 @@ func (wsc *WSClient) Receive(message []byte) {
 		msg := tresp.SerializeMessage()
 		wsc.con.EmitMessage(msg)
 	}
+}
+
+func (wsc *WSClient) HandleTimeRequest(message string) {
+	now := int(time.Now().Unix())
+	wsc.con.Emit("time_response", now)
+}
+
+func (wsc *WSClient) HandleTimeResponse(message int) {
+	if wsc.hc != nil {
+		wsc.hc.UpdateTime(uint32(message))
+	}
+}
+
+func (wsc *WSClient) HandleStatusRequest(message string) {
+	status := compile_status_response()
+	wsc.con.Emit("status_response", status)
 }
 
 func (wsc *WSClient) Disconnect() {
@@ -111,10 +128,14 @@ func (wss *WSServer) Connect(con websocket.Connection) {
 	defer wss.listMutex.Unlock()
 
 	fmt.Println("WSS: incoming connection")
-	c := &WSClient{con: con, wss: wss}
+	c := &WSClient{con: con, wss: wss, hc: nil}
 	wss.clients = append(wss.clients, c)
 
 	con.OnMessage(c.Receive)
+
+	con.On("time_request", c.HandleTimeRequest)
+	con.On("time_response", c.HandleTimeResponse)
+	con.On("status_request", c.HandleStatusRequest)
 
 	con.OnDisconnect(c.Disconnect)
 }
@@ -166,10 +187,7 @@ func main() {
 	}
 	defer lhc.Close()
 
-	lhc.AddPeer("indigo.ciphrtxt.com", 7754)
-	lhc.AddPeer("violet.ciphrtxt.com", 7754)
-
-	//lhc.Sync()
+	lhc.Sync()
 
 	startbig, _ := rand.Int(rand.Reader, big.NewInt(0x200))
 	startbin := int(startbig.Int64()) + 0x200
@@ -498,7 +516,7 @@ func upload_message(ctx context.Context) {
 	ctx.JSON(ciphrtxt.MessageUploadResponse{Header: m.RawMessageHeader.Serialize(), Servertime: servertime})
 }
 
-func get_status(ctx context.Context) {
+func compile_status_response() *ciphrtxt.StatusResponse {
 	r_storage := ciphrtxt.StatusStorageResponse{
 		Headers:     ms.LHC.Count,
 		Messages:    ms.Count,
@@ -526,6 +544,11 @@ func get_status(ctx context.Context) {
 		Sector:  r_sector,
 		Version: "0.2.0",
 	}
+	return &r_status
+}
+
+func get_status(ctx context.Context) {
+	r_status := compile_status_response()
 
 	ctx.StatusCode(iris.StatusOK)
 	ctx.JSON(r_status)

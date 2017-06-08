@@ -406,6 +406,15 @@ func (hc *HeaderCache) FindExpiringAfter(tstamp uint32) (hdrs []RawMessageHeader
 	return hdrs, nil
 }
 
+func (hc *HeaderCache) UpdateTime(serverTime uint32) (err error) {
+	// don't let time go backwards
+	if serverTime > hc.serverTime {
+		hc.serverTime = serverTime
+		return nil
+	}
+	return fmt.Errorf("Attempt to update time backwards")
+}
+
 func (hc *HeaderCache) getTime() (serverTime uint32, err error) {
 	var tr TimeResponse
 
@@ -425,12 +434,13 @@ func (hc *HeaderCache) getTime() (serverTime uint32, err error) {
 		return 0, err
 	}
 
-	hc.NetworkErrors = 0
 	err = json.Unmarshal(body, &tr)
 	if err != nil {
+		hc.NetworkErrors += 1
 		return 0, err
 	}
 
+	hc.NetworkErrors = 0
 	hc.serverTime = uint32(tr.Time)
 	return hc.serverTime, nil
 }
@@ -452,13 +462,13 @@ func (hc *HeaderCache) getHeadersSince(since uint32) (mh []RawMessageHeader, err
 		return nil, err
 	}
 
-	hc.NetworkErrors = 0
 	s := new(HeaderListResponse)
 	err = json.Unmarshal(body, &s)
 	if err != nil {
 		return nil, err
 	}
 
+	hc.NetworkErrors = 0
 	mh = make([]RawMessageHeader, 0)
 	for _, hdr := range s.Headers {
 		h := new(RawMessageHeader)
@@ -536,7 +546,9 @@ func (hc *HeaderCache) Sync() (err error) {
 	hc.syncInProgress = true
 	hc.syncMutex.Unlock()
 	defer func(hc *HeaderCache) {
+		hc.syncMutex.Lock()
 		hc.syncInProgress = false
+		hc.syncMutex.Unlock()
 	}(hc)
 
 	//fmt.Printf("HeaderCache.Sync: %s sync @ now, last, next = %d, %d, %d\n", hc.baseurl, now, hc.lastRefreshLocal, (hc.lastRefreshLocal + refreshMinDelay))
@@ -591,7 +603,6 @@ func (hc *HeaderCache) tryDownloadMessage(I []byte, recvpath string) (m *Message
 		return nil, err
 	}
 
-	hc.NetworkErrors = 0
 	f, err := os.Create(recvpath)
 	if err != nil {
 		return nil, err
@@ -610,6 +621,7 @@ func (hc *HeaderCache) tryDownloadMessage(I []byte, recvpath string) (m *Message
 		return nil, fmt.Errorf("Error receiving file to %s", recvpath)
 	}
 
+	hc.NetworkErrors = 0
 	return m, nil
 }
 
@@ -632,7 +644,6 @@ func (hc *HeaderCache) getPeerInfo() (err error) {
 		return err
 	}
 
-	hc.NetworkErrors = 0
 	err = json.Unmarshal(body, &plr)
 	if err != nil {
 		return err
@@ -643,6 +654,7 @@ func (hc *HeaderCache) getPeerInfo() (err error) {
 	//    fmt.Printf("peer host = %s, port = %d\n",p.Host, p.Port)
 	//}
 
+	hc.NetworkErrors = 0
 	hc.PeerInfo = plr
 	return nil
 }
