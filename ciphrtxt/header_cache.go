@@ -198,11 +198,43 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 	if err != nil {
 		fmt.Printf("Unable to connect to websocket endpoint %s, proceeding by polling only\n", hc.wsurl+apiWebsocketEndpoint)
 	} else {
-		hc.wsclient = client
+		hc.SetupWSHandler(client)
 	}
 
 	fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
 	return hc, nil
+}
+
+func (hc *HeaderCache) SetupWSHandler(client *cwebsocket.Client) {
+	hc.wsclient = client
+	client.OnDisconnect(hc.HandleWSDisconnect)
+	client.On("time_response", hc.HandleWSTimeResponse)
+	client.On("status_response", hc.HandleWSStatusResponse)
+}
+
+func (hc *HeaderCache) HandleWSTimeResponse(message int) {
+	hc.NetworkErrors = 0
+	hc.UpdateTime(uint32(message))
+}
+
+func (hc *HeaderCache) HandleWSStatusResponse(message StatusResponse) {
+	hc.NetworkErrors = 0
+	hc.status = message
+}
+
+func (hc *HeaderCache) HandleWSDisconnect() {
+	hc.wsclient = nil
+}
+
+func (hc *HeaderCache) WebsocketWatchdog() {
+	watchdog := time.NewTimer(refreshMinDelay * time.Second)
+	for {
+		select {
+		case <-watchdog.C:
+			hc.NetworkErrors += 1
+			hc.wsclient.Emit("time_request", "")
+		}
+	}
 }
 
 func (hc *HeaderCache) recount() (err error) {
@@ -530,6 +562,71 @@ func (hc *HeaderCache) pruneExpired() (err error) {
 }
 
 func (hc *HeaderCache) Sync() (err error) {
+	if hc.wsclient != nil {
+		return hc.syncAsync()
+	}
+	// if "fresh enough" (refreshMinDelay) then simply return
+	now := uint32(time.Now().Unix())
+
+	if (hc.lastRefreshLocal + refreshMinDelay) > now {
+		return nil
+	}
+
+	//should only have a single goroutine sync'ing at a time
+	hc.syncMutex.Lock()
+	if hc.syncInProgress {
+		hc.syncMutex.Unlock()
+		return nil
+	}
+	hc.syncInProgress = true
+	hc.syncMutex.Unlock()
+	defer func(hc *HeaderCache) {
+		hc.syncMutex.Lock()
+		hc.syncInProgress = false
+		hc.syncMutex.Unlock()
+	}(hc)
+
+	//fmt.Printf("HeaderCache.Sync: %s sync @ now, last, next = %d, %d, %d\n", hc.baseurl, now, hc.lastRefreshLocal, (hc.lastRefreshLocal + refreshMinDelay))
+
+	serverTime, err := hc.getTime()
+	if err != nil {
+		return err
+	}
+
+	err = hc.pruneExpired()
+	if err != nil {
+		return err
+	}
+
+	mhdrs, err := hc.getHeadersSince(hc.lastRefreshServer)
+	if err != nil {
+		return err
+	}
+
+	insCount := int(0)
+
+	for _, mh := range mhdrs {
+		insert, err := hc.Insert(&mh)
+		if err != nil {
+			fmt.Printf("hc.Insert failed: %s\n", err)
+			continue
+		}
+		if insert {
+			insCount += 1
+		}
+	}
+
+	hc.checkpoint()
+
+	hc.lastRefreshServer = serverTime
+	hc.lastRefreshLocal = now
+
+	//fmt.Printf("insert %d message headers\n", insCount)
+
+	return nil
+}
+
+func (hc *HeaderCache) syncAsync() (err error) {
 	// if "fresh enough" (refreshMinDelay) then simply return
 	now := uint32(time.Now().Unix())
 
