@@ -28,24 +28,9 @@
 package ciphrtxt
 
 import (
-	"bytes"
-	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/util"
-	"io"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"strconv"
-	"sync"
-	"time"
+	// "bytes"
 
 	cwebsocket "github.com/jadeblaquiere/websocket-client"
-	"github.com/kataras/iris/websocket"
 )
 
 type WSHandler struct {
@@ -53,3 +38,4 @@ type WSHandler struct {
 	ms    *MessageStore
 	hc    *HeaderCache
 }
+

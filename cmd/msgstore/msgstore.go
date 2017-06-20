@@ -70,6 +70,15 @@ var configExternalPort = flag.Int("extport", 8080, "Message Service advertised p
 var configListenPort = flag.Int("listenport", 8080, "Message Service listen port number")
 var configTargetRing = flag.Int("ring", 2, "Target value for ring, default=2")
 
+var banner string = `       _       _          _        _   
+      (_)     | |        | |      | |  
+   ___ _ _ __ | |__  _ __| |___  _| |_ 
+  / __| | '_ \| '_ \| '__| __\ \/ / __|
+ | (__| | |_) | | | | |  | |_ >  <| |_ 
+  \___|_| .__/|_| |_|_|   \__/_/\_\\__|
+        | |                            
+        |_|                            `
+
 type WSClient struct {
 	con   websocket.Connection
 	hc    *ciphrtxt.HeaderCache
