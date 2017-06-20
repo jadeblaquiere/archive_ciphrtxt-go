@@ -34,8 +34,7 @@ import (
 )
 
 type WSHandler struct {
-	wscon *cwebsocket.CommonInterface
+	wscon cwebsocket.ClientConnection
 	ms    *MessageStore
 	hc    *HeaderCache
 }
-

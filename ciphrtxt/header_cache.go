@@ -127,7 +127,7 @@ type HeaderCache struct {
 	Count             int
 	NetworkErrors     int
 	PeerInfo          []PeerItemResponse
-	wsclient          *cwebsocket.Client
+	wsclient          cwebsocket.ClientConnection
 }
 
 // NOTE : if dbpath is empty ("") header cache will be in-memory only
@@ -205,7 +205,7 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 	return hc, nil
 }
 
-func (hc *HeaderCache) SetupWSHandler(client *cwebsocket.Client) {
+func (hc *HeaderCache) SetupWSHandler(client cwebsocket.ClientConnection) {
 	hc.wsclient = client
 	client.OnDisconnect(hc.HandleWSDisconnect)
 	client.On("time_response", hc.HandleWSTimeResponse)
