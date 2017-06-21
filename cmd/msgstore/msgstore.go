@@ -213,6 +213,10 @@ func main() {
 	defer ms.Close()
 
 	ms.SetTarget(target)
+	ms.ExternalHost = *configExternalHost
+	ms.ExternalPort = *configExternalPort
+	ms.ExtTokenPort = *configExtTokenPort
+	ms.PubKey = hex.EncodeToString(pubKey.SerializeCompressed())
 
 	customLogger := logger.New(logger.Config{
 		Status: true,
@@ -526,38 +530,11 @@ func upload_message(ctx context.Context) {
 }
 
 func compile_status_response() *ciphrtxt.StatusResponse {
-	r_storage := ciphrtxt.StatusStorageResponse{
-		Headers:     ms.LHC.Count,
-		Messages:    ms.Count,
-		Maxfilesize: (8 * 1024 * 1024),
-		Capacity:    (256 * 1024 * 1024 * 1024),
-		Used:        0,
-	}
-
-	r_network := ciphrtxt.StatusNetworkResponse{
-		Host:    *configExternalHost,
-		MSGPort: *configExternalPort,
-		TOKPort: *configExtTokenPort,
-	}
-
-	r_target := ms.GetCurrentTarget()
-	r_sector := ciphrtxt.ShardSector{
-		Start: r_target.Start,
-		Ring:  r_target.Ring,
-	}
-
-	r_status := ciphrtxt.StatusResponse{
-		Network: r_network,
-		Pubkey:  hex.EncodeToString(pubKey.SerializeCompressed()),
-		Storage: r_storage,
-		Sector:  r_sector,
-		Version: "0.2.0",
-	}
-	return &r_status
+	return ms.Status()
 }
 
 func get_status(ctx context.Context) {
-	r_status := compile_status_response()
+	r_status := ms.Status()
 
 	ctx.StatusCode(iris.StatusOK)
 	ctx.JSON(r_status)

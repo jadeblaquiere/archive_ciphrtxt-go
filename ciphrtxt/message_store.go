@@ -65,6 +65,10 @@ type MessageStore struct {
 	iqueue         chan []byte
 	quitchan       []chan int
 	LHC            *LocalHeaderCache
+	ExternalHost   string
+	ExternalPort   int
+	ExtTokenPort   int
+	PubKey         string
 }
 
 func CheckOrCreateDirectory(filepath string) (err error) {
@@ -627,4 +631,35 @@ func (ms *MessageStore) RefreshStatus() (status string) {
 	status += fmt.Sprintf(" (-%04ds) h: %d\n", (uint32(time.Now().Unix()) - ms.lastRefresh), ms.Count)
 	status += ms.LHC.RefreshStatus()
 	return status
+}
+
+func (ms *MessageStore) Status() (status *StatusResponse) {
+	r_storage := StatusStorageResponse{
+		Headers:     ms.LHC.Count,
+		Messages:    ms.Count,
+		Maxfilesize: (8 * 1024 * 1024),
+		Capacity:    (256 * 1024 * 1024 * 1024),
+		Used:        0,
+	}
+
+	r_network := StatusNetworkResponse{
+		ms.ExternalHost,
+		ms.ExternalPort,
+		ms.ExtTokenPort,
+	}
+
+	r_target := ms.GetCurrentTarget()
+	r_sector := ShardSector{
+		Start: r_target.Start,
+		Ring:  r_target.Ring,
+	}
+
+	r_status := StatusResponse{
+		Network: r_network,
+		Pubkey:  ms.PubKey,
+		Storage: r_storage,
+		Sector:  r_sector,
+		Version: "0.2.0",
+	}
+	return &r_status
 }

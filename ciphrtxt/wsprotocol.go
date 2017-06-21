@@ -29,12 +29,118 @@ package ciphrtxt
 
 import (
 	// "bytes"
+	"encoding/json"
+	"time"
 
 	cwebsocket "github.com/jadeblaquiere/websocket-client"
 )
 
+const (
+	DefaultWatchdogTimeout = 150 * time.Second
+	DefaultTimeTickle      = 30 * time.Second
+)
+
+type WSDisconnect func(wsh *WSHandler)
+
 type WSHandler struct {
-	wscon cwebsocket.ClientConnection
-	ms    *MessageStore
-	hc    *HeaderCache
+	con        cwebsocket.ClientConnection
+	local      *MessageStore
+	remote     *HeaderCache
+	disconnect WSDisconnect
+	watchdog   *time.Timer
+	timeTickle *time.Timer
+}
+
+func (wsh *WSHandler) resetTimeTickle() {
+	if !wsh.timeTickle.Stop() {
+		<-wsh.timeTickle.C
+	}
+	wsh.timeTickle.Reset(DefaultTimeTickle)
+	wsh.resetWatchdog()
+}
+
+func (wsh *WSHandler) resetWatchdog() {
+	if !wsh.watchdog.Stop() {
+		<-wsh.watchdog.C
+	}
+	wsh.watchdog.Reset(DefaultWatchdogTimeout)
+}
+
+func (wsh *WSHandler) txTime(t int) {
+	wsh.resetTimeTickle()
+	wsh.con.Emit("response-time", int(time.Now().Unix()))
+}
+
+func (wsh *WSHandler) rxTime(t int) {
+	wsh.remote.serverTime = uint32(t)
+}
+
+func (wsh *WSHandler) txStatus(t int) {
+	j, err := json.Marshal(wsh.local.Status())
+	if err == nil {
+		wsh.con.Emit("response-status", j)
+	}
+}
+
+func (wsh *WSHandler) rxStatus(m []byte) {
+	var status StatusResponse
+	err := json.Unmarshal(m, &status)
+	if err == nil {
+		wsh.remote.status = status
+	}
+}
+
+func (wsh *WSHandler) TxHeader(rmh *RawMessageHeader) {
+	wsh.con.Emit("response-header", rmh.Serialize())
+}
+
+func (wsh *WSHandler) rxHeader(s string) {
+	rmh := &RawMessageHeader{}
+	err := rmh.Deserialize(s)
+	if err == nil {
+		insert, err := wsh.remote.Insert(rmh)
+		if err != nil {
+			return
+		}
+		if insert {
+			_, _ = wsh.local.LHC.Insert(rmh)
+		}
+	}
+}
+
+func (wsh *WSHandler) OnDisconnect(f WSDisconnect) {
+	wsh.disconnect = f
+}
+
+func (wsh *WSHandler) Setup() {
+	wsh.con.On("request-time", wsh.txTime)
+	wsh.con.On("response-time", wsh.rxTime)
+	wsh.con.On("request-status", wsh.txStatus)
+	wsh.con.On("response-status", wsh.rxStatus)
+	wsh.con.On("response-header", wsh.rxHeader)
+	wsh.con.OnDisconnect(func() {
+		if wsh.disconnect != nil {
+			wsh.disconnect(wsh)
+		}
+	})
+	wsh.timeTickle = time.NewTimer(DefaultTimeTickle)
+	wsh.watchdog = time.NewTimer(DefaultWatchdogTimeout)
+
+	go wsh.eventLoop()
+}
+
+func (wsh *WSHandler) eventLoop() {
+	for {
+		select {
+		case <-wsh.watchdog.C:
+			wsh.con.Disconnect()
+			if wsh.disconnect != nil {
+				wsh.disconnect(wsh)
+			}
+			return
+		case <-wsh.timeTickle.C:
+			wsh.con.Emit("request-time", int(0))
+			wsh.timeTickle.Reset(DefaultTimeTickle)
+		}
+	}
 }
