@@ -177,8 +177,9 @@ func (wsh *wsHandler) setup() {
 			wsh.disconnect(wsh)
 		}
 	})
-	wsh.timeTickle = time.NewTimer(DefaultTimeTickle)
 	wsh.watchdog = time.NewTimer(DefaultWatchdogTimeout)
+	wsh.timeTickle = time.NewTimer(DefaultTimeTickle)
+	wsh.statusTickle = time.NewTimer(DefaultStatusTickle)
 
 	go wsh.eventLoop()
 }
@@ -193,10 +194,12 @@ func (wsh *wsHandler) eventLoop() {
 			}
 			return
 		case <-wsh.timeTickle.C:
+			fmt.Printf("tx->TIME REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
 			wsh.con.Emit("request-time", int(0))
 			wsh.timeTickle.Reset(DefaultTimeTickle)
 			continue
 		case <-wsh.statusTickle.C:
+			fmt.Printf("tx->TIME REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
 			wsh.con.Emit("request-status", int(0))
 			wsh.statusTickle.Reset(DefaultStatusTickle)
 			continue

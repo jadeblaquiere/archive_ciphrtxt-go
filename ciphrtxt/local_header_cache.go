@@ -606,6 +606,8 @@ func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 		} else {
 			pc.wshandler = NewWSProtocolHandler(client, lhc, rhc)
 		}
+	} else {
+		fmt.Println("Not Dialing : ", string(rhc.wsurl+apiWebsocketEndpoint))
 	}
 
 	lhc.Peers = append(lhc.Peers, pc)
