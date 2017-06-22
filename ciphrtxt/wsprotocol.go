@@ -96,14 +96,18 @@ func (wsh *wsHandler) resetWatchdog() {
 
 func (wsh *wsHandler) txTime(t int) {
 	wsh.resetTimeTickle()
-	fmt.Printf("tx->TIME to %s:%d\n", wsh.remote.host, wsh.remote.port)
+	if wsh.remote != nil {
+		fmt.Printf("tx->TIME to %s:%d\n", wsh.remote.host, wsh.remote.port)
+	} else {
+		fmt.Printf("tx->TIME to Pending Peer\n")
+	}
 	wsh.con.Emit("response-time", int(time.Now().Unix()))
 }
 
 func (wsh *wsHandler) rxTime(t int) {
 	wsh.resetWatchdog()
-	fmt.Printf("rx<-TIME from %s:%d\n", wsh.remote.host, wsh.remote.port)
 	if wsh.remote != nil {
+		fmt.Printf("rx<-TIME from %s:%d\n", wsh.remote.host, wsh.remote.port)
 		wsh.remote.serverTime = uint32(t)
 	}
 }
@@ -112,7 +116,11 @@ func (wsh *wsHandler) txStatus(t int) {
 	wsh.resetWatchdog()
 	j, err := json.Marshal(wsh.local.Status())
 	if err == nil {
-		fmt.Printf("tx->STATUS to %s:%d\n", wsh.remote.host, wsh.remote.port)
+		if wsh.remote != nil {
+			fmt.Printf("tx->STATUS to %s:%d\n", wsh.remote.host, wsh.remote.port)
+		} else {
+			fmt.Printf("tx->STATUS to Pending Peer\n")
+		}
 		wsh.con.Emit("response-status", j)
 	}
 }
@@ -126,6 +134,7 @@ func (wsh *wsHandler) rxStatus(m []byte) {
 			fmt.Printf("rx<-STATUS from %s:%d\n", wsh.remote.host, wsh.remote.port)
 			wsh.remote.status = status
 		} else {
+			fmt.Printf("rx<-STATUS from Pending Peer %s:%d\n", status.Network.Host, status.Network.MSGPort)
 			wsh.tmpStatus = status
 		}
 	}
@@ -188,6 +197,7 @@ func (wsh *wsHandler) eventLoop() {
 	for {
 		select {
 		case <-wsh.watchdog.C:
+			fmt.Println("Watchdog expired, closing connection")
 			wsh.con.Disconnect()
 			if wsh.disconnect != nil {
 				wsh.disconnect(wsh)
