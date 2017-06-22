@@ -42,7 +42,7 @@ const (
 	DefaultStatusTickle    = 300 * time.Second
 )
 
-type WSDisconnectFunc func(wsh WSProtocolHandler)
+type WSDisconnectFunc func()
 
 type WSProtocolHandler interface {
 	TxHeader(rmh *RawMessageHeader)
@@ -183,7 +183,7 @@ func (wsh *wsHandler) setup() {
 	wsh.con.On("response-header", wsh.rxHeader)
 	wsh.con.OnDisconnect(func() {
 		if wsh.disconnect != nil {
-			wsh.disconnect(wsh)
+			wsh.disconnect()
 		}
 	})
 	wsh.watchdog = time.NewTimer(DefaultWatchdogTimeout)
@@ -200,7 +200,7 @@ func (wsh *wsHandler) eventLoop() {
 			fmt.Println("Watchdog expired, closing connection")
 			wsh.con.Disconnect()
 			if wsh.disconnect != nil {
-				wsh.disconnect(wsh)
+				wsh.disconnect()
 			}
 			return
 		case <-wsh.timeTickle.C:

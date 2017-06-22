@@ -50,10 +50,15 @@ const lhcPeerConsecutiveErrorMax = 5
 const lhcPeerInfoMinDelay = 300
 
 type peerCache struct {
-	HC           *HeaderCache
-	lastRefresh  uint32
-	lastGetPeers uint32
-	wshandler    WSProtocolHandler
+	HC              *HeaderCache
+	lastRefresh     uint32
+	lastGetPeers    uint32
+	wshandler       WSProtocolHandler
+	watchdogExpired bool
+}
+
+func (pc *peerCache) Disconnect() {
+	pc.watchdogExpired = true
 }
 
 type peerCandidate struct {
@@ -157,16 +162,19 @@ func (lhc *LocalHeaderCache) ConnectWSPeer(con iwebsocket.Connection) {
 	pc := new(peerCandidate)
 	pc.wshandler = NewWSProtocolHandler(con, lhc, nil)
 	con.Emit("request-status", int(0))
-	for tries := 10; tries > 0; tries-- {
+	for tries := 30; tries > 0; tries-- {
 		status := pc.wshandler.Status()
 		if status != nil {
 			pc.host = status.Network.Host
 			pc.port = uint16(status.Network.MSGPort)
+			fmt.Printf("LHC: adding ws-connected peer %s:%d\n", pc.host, pc.port)
 			lhc.addPeer(pc)
-			break
+			return
 		}
 		time.Sleep(1 * time.Second)
 	}
+	fmt.Printf("LHC: failed to add ws-connected peer")
+	con.Disconnect()
 }
 
 func (lhc *LocalHeaderCache) Insert(h MessageHeader) (insert bool, err error) {
@@ -518,7 +526,11 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
 	newPeers := make([]*peerCache, 0, len(lhc.Peers))
 	for _, p := range lhc.Peers {
 		if p.HC.NetworkErrors < lhcPeerConsecutiveErrorMax {
-			newPeers = append(newPeers, p)
+			if p.watchdogExpired == false {
+				newPeers = append(newPeers, p)
+			} else {
+				fmt.Printf("LocalHeaderCache: dropping peer %s (websocket connection disconnected)\n", p.HC.baseurl)
+			}
 		} else {
 			fmt.Printf("LocalHeaderCache: dropping peer %s (error count too high)\n", p.HC.baseurl)
 		}
@@ -586,6 +598,7 @@ func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 	pc.lastRefresh = lastRefresh
 
 	pc.wshandler = pcan.wshandler
+	pc.watchdogExpired = false
 
 	if pc.wshandler == nil {
 		dialer := new(cwebsocket.WSDialer)
@@ -605,6 +618,7 @@ func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 			fmt.Printf("Unable to connect to websocket endpoint %s, proceeding by polling only\n", rhc.wsurl+apiWebsocketEndpoint)
 		} else {
 			pc.wshandler = NewWSProtocolHandler(client, lhc, rhc)
+			pc.wshandler.OnDisconnect(pc.Disconnect)
 		}
 	} else {
 		fmt.Println("Not Dialing : ", string(rhc.wsurl+apiWebsocketEndpoint))
