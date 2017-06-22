@@ -40,6 +40,7 @@ const (
 	DefaultWatchdogTimeout = 150 * time.Second
 	DefaultTimeTickle      = 30 * time.Second
 	DefaultStatusTickle    = 300 * time.Second
+	DefaultPeersTickle     = 300 * time.Second
 )
 
 type WSDisconnectFunc func()
@@ -69,6 +70,7 @@ type wsHandler struct {
 	watchdog     *time.Timer
 	timeTickle   *time.Timer
 	statusTickle *time.Timer
+	peersTickle  *time.Timer
 }
 
 func (wsh *wsHandler) resetTimeTickle() {
@@ -140,6 +142,36 @@ func (wsh *wsHandler) rxStatus(m []byte) {
 	}
 }
 
+func (wsh *wsHandler) txPeers(t int) {
+	wsh.resetWatchdog()
+	peers := wsh.local.ListPeers()
+	for _, peer := range peers {
+		j, err := json.Marshal(peer)
+		if err == nil {
+			if wsh.remote != nil {
+				fmt.Printf("tx->PEER %s:%d to %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
+			} else {
+				fmt.Printf("tx->PEER %s:%d to Pending Peer\n", peer.Host, peer.Port)
+			}
+			wsh.con.Emit("response-peer", j)
+		}
+	}
+}
+
+func (wsh *wsHandler) rxPeer(m []byte) {
+	wsh.resetWatchdog()
+	var peer PeerItemResponse
+	err := json.Unmarshal(m, &peer)
+	if err == nil {
+		if wsh.remote != nil {
+			fmt.Printf("rx<-Peer %s:%d from %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
+		} else {
+			fmt.Printf("rx<-Peer %s:%d from Pending Peer\n", peer.Host, peer.Port)
+		}
+		wsh.local.AddPeer(peer.Host, peer.Port)
+	}
+}
+
 func (wsh *wsHandler) TxHeader(rmh *RawMessageHeader) {
 	fmt.Printf("tx->HEADER to %s:%d\n", wsh.remote.host, wsh.remote.port)
 	wsh.con.Emit("response-header", rmh.Serialize())
@@ -179,11 +211,14 @@ func (wsh *wsHandler) setup() {
 	wsh.watchdog = time.NewTimer(DefaultWatchdogTimeout)
 	wsh.timeTickle = time.NewTimer(DefaultTimeTickle)
 	wsh.statusTickle = time.NewTimer(DefaultStatusTickle)
+	wsh.peersTickle = time.NewTimer(DefaultPeersTickle)
 	wsh.con.On("request-time", wsh.txTime)
 	wsh.con.On("response-time", wsh.rxTime)
 	wsh.con.On("request-status", wsh.txStatus)
 	wsh.con.On("response-status", wsh.rxStatus)
 	wsh.con.On("response-header", wsh.rxHeader)
+	wsh.con.On("request-peers", wsh.txPeers)
+	wsh.con.On("response-peer", wsh.rxPeer)
 	wsh.con.OnDisconnect(func() {
 		if wsh.disconnect != nil {
 			wsh.disconnect()
@@ -191,6 +226,7 @@ func (wsh *wsHandler) setup() {
 	})
 
 	go wsh.eventLoop()
+	go wsh.txPeers(0)
 }
 
 func (wsh *wsHandler) eventLoop() {
@@ -219,6 +255,15 @@ func (wsh *wsHandler) eventLoop() {
 				fmt.Printf("tx->STATUS REQUEST to Pending Peer\n")
 			}
 			wsh.con.Emit("request-status", int(0))
+			wsh.statusTickle.Reset(DefaultStatusTickle)
+			continue
+		case <-wsh.peersTickle.C:
+			if wsh.remote != nil {
+				fmt.Printf("tx->PEERS REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			} else {
+				fmt.Printf("tx->PEERS REQUEST to Pending Peer\n")
+			}
+			wsh.con.Emit("request-peers", int(0))
 			wsh.statusTickle.Reset(DefaultStatusTickle)
 			continue
 		}
