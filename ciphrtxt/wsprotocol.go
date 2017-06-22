@@ -194,12 +194,20 @@ func (wsh *wsHandler) eventLoop() {
 			}
 			return
 		case <-wsh.timeTickle.C:
-			fmt.Printf("tx->TIME REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			if wsh.remote != nil {
+				fmt.Printf("tx->TIME REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			} else {
+				fmt.Printf("tx->TIME REQUEST to Pending Peer\n")
+			}
 			wsh.con.Emit("request-time", int(0))
 			wsh.timeTickle.Reset(DefaultTimeTickle)
 			continue
 		case <-wsh.statusTickle.C:
-			fmt.Printf("tx->TIME REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			if wsh.remote != nil {
+				fmt.Printf("tx->STATUS REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			} else {
+				fmt.Printf("tx->STATUS REQUEST to Pending Peer\n")
+			}
 			wsh.con.Emit("request-status", int(0))
 			wsh.statusTickle.Reset(DefaultStatusTickle)
 			continue
