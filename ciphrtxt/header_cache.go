@@ -45,7 +45,7 @@ import (
 	"time"
 
 	cwebsocket "github.com/jadeblaquiere/websocket-client"
-	"github.com/kataras/iris/websocket"
+	// "github.com/kataras/iris/websocket"
 )
 
 const apiStatus string = "api/v2/status"
@@ -182,24 +182,24 @@ func OpenHeaderCache(host string, port uint16, dbpath string) (hc *HeaderCache, 
 		fmt.Printf("HeaderCache recovered checkpoint @ tstamp %d\n", hc.serverTime)
 	}
 
-	dialer := new(cwebsocket.WSDialer)
+	// dialer := new(cwebsocket.WSDialer)
 
 	// fmt.Println("Dialing : ", string(hc.wsurl+apiWebsocketEndpoint))
 
-	client, _, err := dialer.Dial(string(hc.wsurl+apiWebsocketEndpoint), nil, websocket.Config{
-		ReadTimeout:     60 * time.Second,
-		WriteTimeout:    60 * time.Second,
-		PingPeriod:      9 * 6 * time.Second,
-		PongTimeout:     60 * time.Second,
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		BinaryMessages:  true,
-	})
-	if err != nil {
-		fmt.Printf("Unable to connect to websocket endpoint %s, proceeding by polling only\n", hc.wsurl+apiWebsocketEndpoint)
-	} else {
-		hc.SetupWSHandler(client)
-	}
+	// client, _, err := dialer.Dial(string(hc.wsurl+apiWebsocketEndpoint), nil, websocket.Config{
+	// 	ReadTimeout:     60 * time.Second,
+	// 	WriteTimeout:    60 * time.Second,
+	// 	PingPeriod:      9 * 6 * time.Second,
+	// 	PongTimeout:     60 * time.Second,
+	// 	ReadBufferSize:  1024,
+	// 	WriteBufferSize: 1024,
+	// 	BinaryMessages:  true,
+	// })
+	// if err != nil {
+	// 	fmt.Printf("Unable to connect to websocket endpoint %s, proceeding by polling only\n", hc.wsurl+apiWebsocketEndpoint)
+	// } else {
+	// 	hc.SetupWSHandler(client)
+	// }
 
 	fmt.Printf("HeaderCache %s open, found %d message headers\n", hc.baseurl, hc.Count)
 	return hc, nil

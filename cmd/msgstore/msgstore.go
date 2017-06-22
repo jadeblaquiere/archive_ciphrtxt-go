@@ -43,14 +43,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
+	// "sync"
 	"time"
 
 	"github.com/jadeblaquiere/ciphrtxt-go/ciphrtxt"
 	"github.com/jadeblaquiere/cttd/btcec"
 	"github.com/kataras/iris"
 	"github.com/kataras/iris/context"
-	"github.com/kataras/iris/core/host"
+	// "github.com/kataras/iris/core/host"
 	"github.com/kataras/iris/middleware/logger"
 	"github.com/kataras/iris/view"
 	"github.com/kataras/iris/websocket"
@@ -78,96 +78,6 @@ var banner string = `       _       _          _        _
   \___|_| .__/|_| |_|_|   \__/_/\_\\__|
         | |                            
         |_|                            `
-
-type WSClient struct {
-	con   websocket.Connection
-	hc    *ciphrtxt.HeaderCache
-	wss   *WSServer
-	mutex sync.Mutex
-}
-
-func (wsc *WSClient) Receive(message []byte) {
-	fmt.Println("recv :", string(message))
-	wsm, err := ciphrtxt.DeserializeWSMessage(message)
-	if err != nil {
-		fmt.Println("WSClient : cannot deserialize message")
-		return
-	}
-	if wsm.Type == ciphrtxt.WSRequestTypeTime {
-		// respond with Time
-		tresp := ciphrtxt.NewWSMessageTimeResponse()
-		msg := tresp.SerializeMessage()
-		wsc.con.EmitMessage(msg)
-	}
-}
-
-func (wsc *WSClient) HandleTimeRequest(message string) {
-	now := int(time.Now().Unix())
-	wsc.con.Emit("time_response", now)
-}
-
-func (wsc *WSClient) HandleTimeResponse(message int) {
-	if wsc.hc != nil {
-		wsc.hc.UpdateTime(uint32(message))
-	}
-}
-
-func (wsc *WSClient) HandleStatusRequest(message string) {
-	status := compile_status_response()
-	wsc.con.Emit("status_response", status)
-}
-
-func (wsc *WSClient) Disconnect() {
-
-	fmt.Println("client disconnect")
-	wsc.wss.Disconnect(wsc)
-}
-
-type WSServer struct {
-	clients   []*WSClient
-	listMutex sync.Mutex
-	app       *iris.Application
-	srv       *http.Server
-	super     *host.Supervisor
-	ws        websocket.Server
-}
-
-func (wss *WSServer) Connect(con websocket.Connection) {
-	wss.listMutex.Lock()
-	defer wss.listMutex.Unlock()
-
-	fmt.Println("WSS: incoming connection")
-	c := &WSClient{con: con, wss: wss, hc: nil}
-	wss.clients = append(wss.clients, c)
-
-	con.OnMessage(c.Receive)
-
-	con.On("time_request", c.HandleTimeRequest)
-	con.On("time_response", c.HandleTimeResponse)
-	con.On("status_request", c.HandleStatusRequest)
-
-	con.OnDisconnect(c.Disconnect)
-}
-
-func (wss *WSServer) Disconnect(wsc *WSClient) {
-	wss.listMutex.Lock()
-	defer wss.listMutex.Unlock()
-
-	l := len(wss.clients)
-
-	if l == 0 {
-		panic("WSS:trying to delete client from empty list")
-	}
-
-	for p, v := range wss.clients {
-		if v == wsc {
-			wss.clients[p] = wss.clients[l-1]
-			wss.clients = wss.clients[:l-1]
-			return
-		}
-	}
-	panic("WSS:trying to delete client not in list")
-}
 
 func main() {
 	nCpu := runtime.NumCPU()
@@ -241,10 +151,7 @@ func main() {
 
 	//ms.LHC.DiscoverPeers(*configExternalHost, uint16(*configExternalPort))
 
-	wss := &WSServer{}
-
 	api := iris.New()
-	wss.app = api
 	api.Use(customLogger)
 	api.Get("/", index)
 	api.Get("/api/v2/headers", get_headers)
@@ -269,7 +176,7 @@ func main() {
 		BinaryMessages:  true,
 		Endpoint:        "/wsapi/v2/ws",
 	})
-	ws.OnConnection(wss.Connect)
+	ws.OnConnection(ms.LHC.ConnectWSPeer)
 
 	// Attach the websocket server.
 	ws.Attach(api)
@@ -282,10 +189,10 @@ func main() {
 	listenString := ":" + strconv.Itoa(*configListenPort)
 	//api.Listen(listenString)
 	//api.Listen(":8080")
-	wss.srv = &http.Server{Addr: listenString}
-	wss.super = host.New(wss.srv)
+	srv := &http.Server{Addr: listenString}
+	// super := host.New(srv)
 
-	wss.app.Run(iris.Server(wss.srv))
+	api.Run(iris.Server(srv))
 }
 
 func index(ctx context.Context) {

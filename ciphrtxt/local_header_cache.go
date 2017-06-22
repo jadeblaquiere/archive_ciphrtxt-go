@@ -40,6 +40,9 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	cwebsocket "github.com/jadeblaquiere/websocket-client"
+	iwebsocket "github.com/kataras/iris/websocket"
 )
 
 const lhcRefreshMinDelay = 30
@@ -50,16 +53,18 @@ type peerCache struct {
 	HC           *HeaderCache
 	lastRefresh  uint32
 	lastGetPeers uint32
+	wshandler    WSProtocolHandler
 }
 
 type peerCandidate struct {
-	host string
-	port uint16
+	host      string
+	port      uint16
+	wshandler WSProtocolHandler
 }
 
 var defaultSeedPeers []*peerCandidate = []*peerCandidate{
-	&peerCandidate{"indigo.ciphrtxt.com", 7754},
-	&peerCandidate{"violet.ciphrtxt.com", 7754},
+	&peerCandidate{"indigo.ciphrtxt.com", 7754, nil},
+	&peerCandidate{"violet.ciphrtxt.com", 7754, nil},
 }
 
 type LocalHeaderCache struct {
@@ -76,6 +81,11 @@ type LocalHeaderCache struct {
 	discoverPeersMutex      sync.Mutex
 	discoverPeersInProgress bool
 	lastPeerSync            uint32
+	ms                      *MessageStore
+	ExternalHost            string
+	ExternalPort            int
+	ExtTokenPort            int
+	PubKey                  string
 }
 
 func OpenLocalHeaderCache(filepath string) (lhc *LocalHeaderCache, err error) {
@@ -140,6 +150,22 @@ func (lhc *LocalHeaderCache) Close() {
 	if lhc.db != nil {
 		lhc.db.Close()
 		lhc.db = nil
+	}
+}
+
+func (lhc *LocalHeaderCache) ConnectWSPeer(con iwebsocket.Connection) {
+	pc := new(peerCandidate)
+	pc.wshandler = NewWSProtocolHandler(con, lhc, nil)
+	con.Emit("request-status", int(0))
+	for tries := 10; tries > 0; tries-- {
+		status := pc.wshandler.Status()
+		if status != nil {
+			pc.host = status.Network.Host
+			pc.port = uint16(status.Network.MSGPort)
+			lhc.addPeer(pc)
+			break
+		}
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -436,7 +462,7 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
 	lhc.peerCandidateMutex.Unlock()
 
 	for _, pc := range candidates {
-		if lhc.addPeer(pc.host, pc.port) != nil {
+		if lhc.addPeer(pc) != nil {
 			fmt.Printf("LocalHeaderCache: failed to add peer %s, %d\n", pc.host, pc.port)
 		}
 	}
@@ -522,7 +548,9 @@ func (lhc *LocalHeaderCache) AddPeer(host string, port uint16) {
 	lhc.peerCandidates = append(lhc.peerCandidates, pc)
 }
 
-func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
+func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
+	host := pcan.host
+	port := pcan.port
 	for _, p := range lhc.Peers {
 		if (p.HC.host == host) && (p.HC.port == port) {
 			fmt.Printf("addPeer: %s:%d already connected\n", host, port)
@@ -556,6 +584,29 @@ func (lhc *LocalHeaderCache) addPeer(host string, port uint16) (err error) {
 
 	pc.HC = rhc
 	pc.lastRefresh = lastRefresh
+
+	pc.wshandler = pcan.wshandler
+
+	if pc.wshandler == nil {
+		dialer := new(cwebsocket.WSDialer)
+
+		fmt.Println("Dialing : ", string(rhc.wsurl+apiWebsocketEndpoint))
+
+		client, _, err := dialer.Dial(string(rhc.wsurl+apiWebsocketEndpoint), nil, iwebsocket.Config{
+			ReadTimeout:     60 * time.Second,
+			WriteTimeout:    60 * time.Second,
+			PingPeriod:      9 * 6 * time.Second,
+			PongTimeout:     60 * time.Second,
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			BinaryMessages:  true,
+		})
+		if err != nil {
+			fmt.Printf("Unable to connect to websocket endpoint %s, proceeding by polling only\n", rhc.wsurl+apiWebsocketEndpoint)
+		} else {
+			pc.wshandler = NewWSProtocolHandler(client, lhc, rhc)
+		}
+	}
 
 	lhc.Peers = append(lhc.Peers, pc)
 
@@ -675,4 +726,37 @@ func (lhc *LocalHeaderCache) RefreshStatus() (status string) {
 		status += p.HC.RefreshStatus()
 	}
 	return status
+}
+
+func (lhc *LocalHeaderCache) Status() (status *StatusResponse) {
+	if lhc.ms != nil {
+		return lhc.ms.Status()
+	}
+	r_storage := StatusStorageResponse{
+		Headers:     lhc.Count,
+		Messages:    0,
+		Maxfilesize: (8 * 1024 * 1024),
+		Capacity:    (256 * 1024 * 1024 * 1024),
+		Used:        0,
+	}
+
+	r_network := StatusNetworkResponse{
+		lhc.ExternalHost,
+		lhc.ExternalPort,
+		lhc.ExtTokenPort,
+	}
+
+	r_sector := ShardSector{
+		Start: 0,
+		Ring:  10,
+	}
+
+	r_status := StatusResponse{
+		Network: r_network,
+		Pubkey:  lhc.PubKey,
+		Storage: r_storage,
+		Sector:  r_sector,
+		Version: "0.2.0",
+	}
+	return &r_status
 }

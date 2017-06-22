@@ -30,6 +30,7 @@ package ciphrtxt
 import (
 	// "bytes"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	cwebsocket "github.com/jadeblaquiere/websocket-client"
@@ -38,20 +39,39 @@ import (
 const (
 	DefaultWatchdogTimeout = 150 * time.Second
 	DefaultTimeTickle      = 30 * time.Second
+	DefaultStatusTickle    = 300 * time.Second
 )
 
-type WSDisconnect func(wsh *WSHandler)
+type WSDisconnectFunc func(wsh WSProtocolHandler)
 
-type WSHandler struct {
-	con        cwebsocket.ClientConnection
-	local      *MessageStore
-	remote     *HeaderCache
-	disconnect WSDisconnect
-	watchdog   *time.Timer
-	timeTickle *time.Timer
+type WSProtocolHandler interface {
+	TxHeader(rmh *RawMessageHeader)
+	OnDisconnect(f WSDisconnectFunc)
+	Status() *StatusResponse
 }
 
-func (wsh *WSHandler) resetTimeTickle() {
+func NewWSProtocolHandler(con cwebsocket.ClientConnection, local *LocalHeaderCache, remote *HeaderCache) WSProtocolHandler {
+	wsh := wsHandler{
+		con:    con,
+		local:  local,
+		remote: remote,
+	}
+	wsh.setup()
+	return &wsh
+}
+
+type wsHandler struct {
+	con          cwebsocket.ClientConnection
+	local        *LocalHeaderCache
+	remote       *HeaderCache
+	tmpStatus    StatusResponse
+	disconnect   WSDisconnectFunc
+	watchdog     *time.Timer
+	timeTickle   *time.Timer
+	statusTickle *time.Timer
+}
+
+func (wsh *wsHandler) resetTimeTickle() {
 	if !wsh.timeTickle.Stop() {
 		<-wsh.timeTickle.C
 	}
@@ -59,60 +79,94 @@ func (wsh *WSHandler) resetTimeTickle() {
 	wsh.resetWatchdog()
 }
 
-func (wsh *WSHandler) resetWatchdog() {
+func (wsh *wsHandler) resetStatusTickle() {
+	if !wsh.statusTickle.Stop() {
+		<-wsh.statusTickle.C
+	}
+	wsh.statusTickle.Reset(DefaultStatusTickle)
+	wsh.resetWatchdog()
+}
+
+func (wsh *wsHandler) resetWatchdog() {
 	if !wsh.watchdog.Stop() {
 		<-wsh.watchdog.C
 	}
 	wsh.watchdog.Reset(DefaultWatchdogTimeout)
 }
 
-func (wsh *WSHandler) txTime(t int) {
+func (wsh *wsHandler) txTime(t int) {
 	wsh.resetTimeTickle()
+	fmt.Printf("tx->TIME to %s:%d\n", wsh.remote.host, wsh.remote.port)
 	wsh.con.Emit("response-time", int(time.Now().Unix()))
 }
 
-func (wsh *WSHandler) rxTime(t int) {
-	wsh.remote.serverTime = uint32(t)
+func (wsh *wsHandler) rxTime(t int) {
+	wsh.resetWatchdog()
+	fmt.Printf("rx<-TIME from %s:%d\n", wsh.remote.host, wsh.remote.port)
+	if wsh.remote != nil {
+		wsh.remote.serverTime = uint32(t)
+	}
 }
 
-func (wsh *WSHandler) txStatus(t int) {
+func (wsh *wsHandler) txStatus(t int) {
+	wsh.resetWatchdog()
 	j, err := json.Marshal(wsh.local.Status())
 	if err == nil {
+		fmt.Printf("tx->STATUS to %s:%d\n", wsh.remote.host, wsh.remote.port)
 		wsh.con.Emit("response-status", j)
 	}
 }
 
-func (wsh *WSHandler) rxStatus(m []byte) {
+func (wsh *wsHandler) rxStatus(m []byte) {
 	var status StatusResponse
 	err := json.Unmarshal(m, &status)
 	if err == nil {
-		wsh.remote.status = status
+		wsh.resetStatusTickle()
+		if wsh.remote != nil {
+			fmt.Printf("rx<-STATUS from %s:%d\n", wsh.remote.host, wsh.remote.port)
+			wsh.remote.status = status
+		} else {
+			wsh.tmpStatus = status
+		}
 	}
 }
 
-func (wsh *WSHandler) TxHeader(rmh *RawMessageHeader) {
+func (wsh *wsHandler) TxHeader(rmh *RawMessageHeader) {
+	fmt.Printf("tx->HEADER to %s:%d\n", wsh.remote.host, wsh.remote.port)
 	wsh.con.Emit("response-header", rmh.Serialize())
 }
 
-func (wsh *WSHandler) rxHeader(s string) {
+func (wsh *wsHandler) rxHeader(s string) {
 	rmh := &RawMessageHeader{}
 	err := rmh.Deserialize(s)
 	if err == nil {
-		insert, err := wsh.remote.Insert(rmh)
-		if err != nil {
-			return
-		}
-		if insert {
-			_, _ = wsh.local.LHC.Insert(rmh)
+		wsh.resetWatchdog()
+		if wsh.remote != nil {
+			fmt.Printf("rx<-HEADER from %s:%d\n", wsh.remote.host, wsh.remote.port)
+			insert, err := wsh.remote.Insert(rmh)
+			if err != nil {
+				return
+			}
+			if insert {
+				_, _ = wsh.local.Insert(rmh)
+			}
 		}
 	}
 }
 
-func (wsh *WSHandler) OnDisconnect(f WSDisconnect) {
+func (wsh *wsHandler) OnDisconnect(f WSDisconnectFunc) {
 	wsh.disconnect = f
 }
 
-func (wsh *WSHandler) Setup() {
+func (wsh *wsHandler) Status() *StatusResponse {
+	if wsh.remote != nil {
+		return &wsh.remote.status
+	} else {
+		return &wsh.tmpStatus
+	}
+}
+
+func (wsh *wsHandler) setup() {
 	wsh.con.On("request-time", wsh.txTime)
 	wsh.con.On("response-time", wsh.rxTime)
 	wsh.con.On("request-status", wsh.txStatus)
@@ -129,7 +183,7 @@ func (wsh *WSHandler) Setup() {
 	go wsh.eventLoop()
 }
 
-func (wsh *WSHandler) eventLoop() {
+func (wsh *wsHandler) eventLoop() {
 	for {
 		select {
 		case <-wsh.watchdog.C:
@@ -141,6 +195,11 @@ func (wsh *WSHandler) eventLoop() {
 		case <-wsh.timeTickle.C:
 			wsh.con.Emit("request-time", int(0))
 			wsh.timeTickle.Reset(DefaultTimeTickle)
+			continue
+		case <-wsh.statusTickle.C:
+			wsh.con.Emit("request-status", int(0))
+			wsh.statusTickle.Reset(DefaultStatusTickle)
+			continue
 		}
 	}
 }

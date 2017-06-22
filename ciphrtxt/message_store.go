@@ -146,6 +146,7 @@ func OpenMessageStore(filepath string, lhc *LocalHeaderCache, startbin int) (ms 
 	ms.sector.Start = startbin
 	ms.sector.Ring = ShardSectorOuterRing
 	ms.LHC = lhc
+	lhc.ms = ms
 
 	ms.iqueue = make(chan []byte, (5 * syncMaxGoroutines))
 	ms.quitchan = make([]chan int, syncMaxGoroutines)
