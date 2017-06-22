@@ -176,6 +176,9 @@ func (wsh *wsHandler) Status() *StatusResponse {
 }
 
 func (wsh *wsHandler) setup() {
+	wsh.watchdog = time.NewTimer(DefaultWatchdogTimeout)
+	wsh.timeTickle = time.NewTimer(DefaultTimeTickle)
+	wsh.statusTickle = time.NewTimer(DefaultStatusTickle)
 	wsh.con.On("request-time", wsh.txTime)
 	wsh.con.On("response-time", wsh.rxTime)
 	wsh.con.On("request-status", wsh.txStatus)
@@ -186,9 +189,6 @@ func (wsh *wsHandler) setup() {
 			wsh.disconnect()
 		}
 	})
-	wsh.watchdog = time.NewTimer(DefaultWatchdogTimeout)
-	wsh.timeTickle = time.NewTimer(DefaultTimeTickle)
-	wsh.statusTickle = time.NewTimer(DefaultStatusTickle)
 
 	go wsh.eventLoop()
 }
