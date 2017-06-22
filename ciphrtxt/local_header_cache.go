@@ -530,9 +530,11 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
 				newPeers = append(newPeers, p)
 			} else {
 				fmt.Printf("LocalHeaderCache: dropping peer %s (websocket connection disconnected)\n", p.HC.baseurl)
+				p.HC.Close()
 			}
 		} else {
 			fmt.Printf("LocalHeaderCache: dropping peer %s (error count too high)\n", p.HC.baseurl)
+			p.HC.Close()
 		}
 	}
 
