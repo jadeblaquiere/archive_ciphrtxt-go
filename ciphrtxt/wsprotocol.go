@@ -46,7 +46,7 @@ const (
 type WSDisconnectFunc func()
 
 type WSProtocolHandler interface {
-	TxHeader(rmh *RawMessageHeader)
+	TxHeader(rmh MessageHeader)
 	OnDisconnect(f WSDisconnectFunc)
 	Status() *StatusResponse
 }
@@ -172,7 +172,7 @@ func (wsh *wsHandler) rxPeer(m []byte) {
 	}
 }
 
-func (wsh *wsHandler) TxHeader(rmh *RawMessageHeader) {
+func (wsh *wsHandler) TxHeader(rmh MessageHeader) {
 	fmt.Printf("tx->HEADER to %s:%d\n", wsh.remote.host, wsh.remote.port)
 	wsh.con.Emit("response-header", rmh.Serialize())
 }
@@ -191,7 +191,11 @@ func (wsh *wsHandler) rxHeader(s string) {
 			if insert {
 				_, _ = wsh.local.Insert(rmh)
 			}
+		} else {
+			fmt.Printf("rx<-HEADER from Pending Peer\n")
 		}
+	} else {
+		fmt.Printf("rx<-HEADER, error deserializing %s (len %d)\n", s, len(s))
 	}
 }
 

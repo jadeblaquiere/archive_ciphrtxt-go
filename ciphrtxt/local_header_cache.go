@@ -203,6 +203,16 @@ func (lhc *LocalHeaderCache) Insert(h MessageHeader) (insert bool, err error) {
 		return false, err
 	}
 
+	notifyPeers := lhc.Peers[:]
+	for _, peer := range notifyPeers {
+		if peer.wshandler != nil {
+			rh, _ := peer.HC.FindByI(dbk.I)
+			if rh == nil {
+				peer.wshandler.TxHeader(h)
+			}
+		}
+	}
+
 	lhc.Count += 1
 	return true, nil
 }
