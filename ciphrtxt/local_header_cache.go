@@ -162,11 +162,17 @@ func (lhc *LocalHeaderCache) ConnectWSPeer(con iwebsocket.Connection) {
 	pc := new(peerCandidate)
 	pc.wshandler = NewWSProtocolHandler(con, lhc, nil)
 	con.Emit("request-status", int(0))
-	for tries := 30; tries > 0; tries-- {
+	for tries := 10; tries > 0; tries-- {
 		status := pc.wshandler.Status()
 		if status != nil {
 			pc.host = status.Network.Host
 			pc.port = uint16(status.Network.MSGPort)
+			for _, p := range lhc.Peers {
+				if (p.HC.host == pc.host) && (p.HC.port == pc.port) {
+					pc.wshandler.Disconnect()
+				}
+				return
+			}
 			fmt.Printf("LHC: adding ws-connected peer %s:%d\n", pc.host, pc.port)
 			lhc.addPeer(pc)
 			return
@@ -577,8 +583,8 @@ func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 	port := pcan.port
 	for _, p := range lhc.Peers {
 		if (p.HC.host == host) && (p.HC.port == port) {
-			fmt.Printf("addPeer: %s:%d already connected\n", host, port)
-			return nil
+			// fmt.Printf("addPeer: %s:%d already connected\n", host, port)
+			return fmt.Errorf("addPeer: %s:%d already connected", host, port)
 		}
 	}
 

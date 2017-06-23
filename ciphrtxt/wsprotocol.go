@@ -48,6 +48,7 @@ type WSDisconnectFunc func()
 type WSProtocolHandler interface {
 	TxHeader(rmh MessageHeader)
 	OnDisconnect(f WSDisconnectFunc)
+	Disconnect()
 	Status() *StatusResponse
 }
 
@@ -71,6 +72,7 @@ type wsHandler struct {
 	timeTickle   *time.Timer
 	statusTickle *time.Timer
 	peersTickle  *time.Timer
+	abort        chan bool
 }
 
 func (wsh *wsHandler) resetTimeTickle() {
@@ -216,6 +218,7 @@ func (wsh *wsHandler) setup() {
 	wsh.timeTickle = time.NewTimer(DefaultTimeTickle)
 	wsh.statusTickle = time.NewTimer(DefaultStatusTickle)
 	wsh.peersTickle = time.NewTimer(DefaultPeersTickle)
+	wsh.abort = make(chan bool)
 	wsh.con.On("request-time", wsh.txTime)
 	wsh.con.On("response-time", wsh.rxTime)
 	wsh.con.On("request-status", wsh.txStatus)
@@ -231,6 +234,20 @@ func (wsh *wsHandler) setup() {
 
 	go wsh.eventLoop()
 	go wsh.txPeers(0)
+}
+
+func (wsh *wsHandler) Disconnect() {
+	if !wsh.timeTickle.Stop() {
+		<-wsh.timeTickle.C
+	}
+	if !wsh.statusTickle.Stop() {
+		<-wsh.statusTickle.C
+	}
+	if !wsh.watchdog.Stop() {
+		<-wsh.watchdog.C
+	}
+	wsh.abort <- true
+	wsh.con.Disconnect()
 }
 
 func (wsh *wsHandler) eventLoop() {
@@ -270,6 +287,10 @@ func (wsh *wsHandler) eventLoop() {
 			wsh.con.Emit("request-peers", int(0))
 			wsh.statusTickle.Reset(DefaultStatusTickle)
 			continue
+		case done := <-wsh.abort:
+			if done {
+				return
+			}
 		}
 	}
 }
