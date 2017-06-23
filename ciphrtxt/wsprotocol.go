@@ -59,6 +59,9 @@ func NewWSProtocolHandler(con cwebsocket.ClientConnection, local *LocalHeaderCac
 		local:  local,
 		remote: remote,
 	}
+	if remote == nil {
+		wsh.inbound = true
+	}
 	wsh.setup()
 	wsHandlerListMutex.Lock()
 	defer wsHandlerListMutex.Unlock()
