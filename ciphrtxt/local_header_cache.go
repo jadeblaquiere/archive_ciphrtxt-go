@@ -170,8 +170,8 @@ func (lhc *LocalHeaderCache) ConnectWSPeer(con iwebsocket.Connection) {
 			for _, p := range lhc.Peers {
 				if (p.HC.host == pc.host) && (p.HC.port == pc.port) {
 					pc.wshandler.Disconnect()
+					return
 				}
-				return
 			}
 			fmt.Printf("LHC: adding ws-connected peer %s:%d\n", pc.host, pc.port)
 			lhc.addPeer(pc)
@@ -758,6 +758,19 @@ func (lhc *LocalHeaderCache) RefreshStatus() (status string) {
 	status += fmt.Sprintf(" (-%04ds)\n", (uint32(time.Now().Unix()) - lhc.lastPeerSync))
 	for _, p := range lhc.Peers {
 		status += p.HC.RefreshStatus()
+	}
+	status += fmt.Sprintf("\nWebsocket Peers:\n")
+	for _, wsh := range wsHandlerList {
+		if wsh.remote == nil {
+			status += fmt.Sprintf("Pending WS peer %s:%d (inbound)\n", wsh.tmpStatus.Network.Host, wsh.tmpStatus.Network.MSGPort)
+		} else {
+			status += fmt.Sprintf("Connected WS peer %s:%d ", wsh.remote.host, wsh.remote.port)
+			if wsh.inbound {
+				status += fmt.Sprintf("(inbound)\n")
+			} else {
+				status += fmt.Sprintf("(outbound)\n")
+			}
+		}
 	}
 	return status
 }

@@ -31,6 +31,7 @@ import (
 	// "bytes"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	cwebsocket "github.com/jadeblaquiere/websocket-client"
@@ -59,6 +60,9 @@ func NewWSProtocolHandler(con cwebsocket.ClientConnection, local *LocalHeaderCac
 		remote: remote,
 	}
 	wsh.setup()
+	wsHandlerListMutex.Lock()
+	defer wsHandlerListMutex.Unlock()
+	wsHandlerList = append(wsHandlerList, &wsh)
 	return &wsh
 }
 
@@ -73,7 +77,11 @@ type wsHandler struct {
 	statusTickle *time.Timer
 	peersTickle  *time.Timer
 	abort        chan bool
+	inbound      bool
 }
+
+var wsHandlerList []*wsHandler
+var wsHandlerListMutex sync.Mutex
 
 func (wsh *wsHandler) resetTimeTickle() {
 	if !wsh.timeTickle.Stop() {
@@ -229,6 +237,7 @@ func (wsh *wsHandler) setup() {
 	wsh.con.OnDisconnect(func() {
 		if wsh.disconnect != nil {
 			wsh.disconnect()
+			wsh.Disconnect()
 		}
 	})
 
@@ -248,6 +257,17 @@ func (wsh *wsHandler) Disconnect() {
 	}
 	wsh.abort <- true
 	wsh.con.Disconnect()
+	wsHandlerListMutex.Lock()
+	defer wsHandlerListMutex.Unlock()
+	for i, w := range wsHandlerList {
+		if w == wsh {
+			wsHandlerList[i] = wsHandlerList[len(wsHandlerList)-1]
+			wsHandlerList[len(wsHandlerList)-1] = nil
+			wsHandlerList = wsHandlerList[:len(wsHandlerList)-1]
+			return
+		}
+	}
+	panic("wsHandler.Disconnect: trying to remove element not in list")
 }
 
 func (wsh *wsHandler) eventLoop() {
