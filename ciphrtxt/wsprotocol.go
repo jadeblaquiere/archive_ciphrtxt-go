@@ -164,9 +164,9 @@ func (wsh *wsHandler) rxPeer(m []byte) {
 	err := json.Unmarshal(m, &peer)
 	if err == nil {
 		if wsh.remote != nil {
-			fmt.Printf("rx<-Peer %s:%d from %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
+			fmt.Printf("rx<-PEER %s:%d from %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
 		} else {
-			fmt.Printf("rx<-Peer %s:%d from Pending Peer\n", peer.Host, peer.Port)
+			fmt.Printf("rx<-PEER %s:%d from Pending Peer\n", peer.Host, peer.Port)
 		}
 		wsh.local.AddPeer(peer.Host, peer.Port)
 	}

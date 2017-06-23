@@ -396,7 +396,7 @@ func upload_message(ctx context.Context) {
 	}
 	defer src.Close()
 
-	recvpath := "./receive/" + strconv.Itoa(int(time.Now().UnixNano()))
+	recvpath := "./messages/receive/" + strconv.Itoa(int(time.Now().UnixNano()))
 	dst, err := os.Create(recvpath)
 	if err != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
