@@ -85,17 +85,28 @@ func CheckOrCreateDirectory(filepath string) (err error) {
 }
 
 func (ms *MessageStore) fetchMessageFromPeers(I []byte) (m *MessageFile) {
-	nPeers := len(ms.LHC.Peers)
+	Ps := ms.LHC.Peers[:]
+	nPeers := len(Ps)
 	ordinal := rand.Perm(nPeers)
+	hclist := make([]*HeaderCache, 0)
 	for i := 0; i < nPeers; i++ {
-		phc := ms.LHC.Peers[ordinal[i]].HC
+		phc := Ps[ordinal[i]].HC
+		sector := phc.status.Sector
+		if sector.Contains(I) {
+			hclist = append(hclist, phc)
+		}
+	}
+	for i := 0; i < nPeers; i++ {
+		phc := Ps[ordinal[i]].HC
 		sector := phc.status.Sector
 		if !sector.Contains(I) {
-			continue
+			hclist = append(hclist, phc)
 		}
+	}
+	for _, phc := range hclist {
 		h, _ := phc.FindByI(I)
 		if h == nil {
-			fmt.Printf("err: not found\n")
+			fmt.Printf("MS message %s not found in db for %s\n", hex.EncodeToString(I), phc.baseurl)
 			continue
 		}
 		tmptime := time.Now().UnixNano()
