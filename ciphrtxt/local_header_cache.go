@@ -162,25 +162,18 @@ func (lhc *LocalHeaderCache) ConnectWSPeer(con iwebsocket.Connection) {
 	pc := new(peerCandidate)
 	pc.wshandler = NewWSProtocolHandler(con, lhc, nil)
 	con.Emit("request-status", int(0))
-	for tries := 10; tries > 0; tries-- {
+	for tries := 30; tries > 0; tries-- {
 		status := pc.wshandler.Status()
 		if status != nil {
 			pc.host = status.Network.Host
 			pc.port = uint16(status.Network.MSGPort)
-			for _, p := range lhc.Peers {
-				if (p.HC.host == pc.host) && (p.HC.port == pc.port) {
-					pc.wshandler.Disconnect()
-					return
-				}
-			}
-			fmt.Printf("LHC: adding ws-connected peer %s:%d\n", pc.host, pc.port)
-			lhc.addPeer(pc)
+			lhc.peerCandidates = append(lhc.peerCandidates, pc)
 			return
 		}
 		time.Sleep(1 * time.Second)
 	}
-	fmt.Printf("LHC: failed to add ws-connected peer")
-	con.Disconnect()
+	fmt.Printf("LHC: failed to get status from ws-connected peer, disconnecting...\n")
+	pc.wshandler.Disconnect()
 }
 
 func (lhc *LocalHeaderCache) Insert(h MessageHeader) (insert bool, err error) {
@@ -581,9 +574,24 @@ func (lhc *LocalHeaderCache) AddPeer(host string, port uint16) {
 func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 	host := pcan.host
 	port := pcan.port
+	if (host == lhc.ExternalHost) && (port == uint16(lhc.ExternalPort)) {
+		return fmt.Errorf("LHC.addPeer : refusing to connect to self")
+	}
 	for _, p := range lhc.Peers {
 		if (p.HC.host == host) && (p.HC.port == port) {
 			// fmt.Printf("addPeer: %s:%d already connected\n", host, port)
+			if p.wshandler == nil {
+				if pcan.wshandler != nil {
+					fmt.Printf("LHC.addPeer: %s:%d adoping websocket connection", host, port)
+					p.wshandler = pcan.wshandler
+					pcan.wshandler = nil
+				} else {
+					if pcan.wshandler != nil {
+						fmt.Printf("LHC.addPeer: %s:%d dropping duplicate websocket connection", host, port)
+						pcan.wshandler.Disconnect()
+					}
+				}
+			}
 			return fmt.Errorf("addPeer: %s:%d already connected", host, port)
 		}
 	}
@@ -639,7 +647,7 @@ func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 			pc.wshandler.OnDisconnect(pc.Disconnect)
 		}
 	} else {
-		fmt.Println("Not Dialing : ", string(rhc.wsurl+apiWebsocketEndpoint))
+		fmt.Println("Not Dialing, already connected", string(rhc.wsurl+apiWebsocketEndpoint))
 	}
 
 	lhc.Peers = append(lhc.Peers, pc)

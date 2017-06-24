@@ -106,6 +106,10 @@ func main() {
 	}
 	defer lhc.Close()
 
+	lhc.ExternalHost = *configExternalHost
+	lhc.ExternalPort = *configExternalPort
+	lhc.ExtTokenPort = *configExtTokenPort
+
 	lhc.Sync()
 
 	startbig, _ := rand.Int(rand.Reader, big.NewInt(0x200))
