@@ -278,10 +278,10 @@ func (wsh *wsHandler) eventLoop() {
 		select {
 		case <-wsh.watchdog.C:
 			fmt.Println("Watchdog expired, closing connection")
-			wsh.con.Disconnect()
 			if wsh.disconnect != nil {
 				wsh.disconnect()
 			}
+			wsh.Disconnect()
 			return
 		case <-wsh.timeTickle.C:
 			if wsh.remote != nil {

@@ -167,6 +167,9 @@ func (lhc *LocalHeaderCache) ConnectWSPeer(con iwebsocket.Connection) {
 		if status != nil {
 			pc.host = status.Network.Host
 			pc.port = uint16(status.Network.MSGPort)
+			fmt.Printf("LHC: submitting incoming peer %s:%d for consideration\n", pc.host, pc.port)
+			lhc.peerCandidateMutex.Lock()
+			defer lhc.peerCandidateMutex.Unlock()
 			lhc.peerCandidates = append(lhc.peerCandidates, pc)
 			return
 		}
@@ -584,12 +587,18 @@ func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 				if pcan.wshandler != nil {
 					fmt.Printf("LHC.addPeer: %s:%d adoping websocket connection", host, port)
 					p.wshandler = pcan.wshandler
+					p.wshandler.OnDisconnect(p.Disconnect)
 					pcan.wshandler = nil
 				} else {
 					if pcan.wshandler != nil {
 						fmt.Printf("LHC.addPeer: %s:%d dropping duplicate websocket connection", host, port)
 						pcan.wshandler.Disconnect()
 					}
+				}
+			} else {
+				if pcan.wshandler != nil {
+					fmt.Printf("LHC.addPeer: dropping incoming connected duplicate %s:%d\n", host, port)
+					pcan.wshandler.Disconnect()
 				}
 			}
 			return fmt.Errorf("addPeer: %s:%d already connected", host, port)
