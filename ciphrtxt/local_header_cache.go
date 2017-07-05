@@ -161,22 +161,24 @@ func (lhc *LocalHeaderCache) Close() {
 func (lhc *LocalHeaderCache) ConnectWSPeer(con iwebsocket.Connection) {
 	pc := new(peerCandidate)
 	pc.wshandler = NewWSProtocolHandler(con, lhc, nil)
-	con.Emit("request-status", int(0))
-	for tries := 30; tries > 0; tries-- {
-		status := pc.wshandler.Status()
-		if status != nil {
-			pc.host = status.Network.Host
-			pc.port = uint16(status.Network.MSGPort)
-			fmt.Printf("LHC: submitting incoming peer %s:%d for consideration\n", pc.host, pc.port)
-			lhc.peerCandidateMutex.Lock()
-			defer lhc.peerCandidateMutex.Unlock()
-			lhc.peerCandidates = append(lhc.peerCandidates, pc)
-			return
+	go func(pc *peerCandidate) {
+		for tries := 30; tries > 0; tries-- {
+			pc.wshandler.RequestStatus()
+			status := pc.wshandler.Status()
+			if status != nil {
+				pc.host = status.Network.Host
+				pc.port = uint16(status.Network.MSGPort)
+				fmt.Printf("LHC: submitting incoming peer %s:%d for consideration\n", pc.host, pc.port)
+				lhc.peerCandidateMutex.Lock()
+				defer lhc.peerCandidateMutex.Unlock()
+				lhc.peerCandidates = append(lhc.peerCandidates, pc)
+				return
+			}
+			time.Sleep(1 * time.Second)
 		}
-		time.Sleep(1 * time.Second)
-	}
-	fmt.Printf("LHC: failed to get status from ws-connected peer, disconnecting...\n")
-	pc.wshandler.Disconnect()
+		fmt.Printf("LHC: failed to get status from ws-connected peer, disconnecting...\n")
+		pc.wshandler.Disconnect()
+	}(pc)
 }
 
 func (lhc *LocalHeaderCache) Insert(h MessageHeader) (insert bool, err error) {
@@ -657,6 +659,7 @@ func (lhc *LocalHeaderCache) addPeer(pcan *peerCandidate) (err error) {
 		}
 	} else {
 		fmt.Println("Not Dialing, already connected", string(rhc.wsurl+apiWebsocketEndpoint))
+		pc.wshandler.AdoptRemote(rhc)
 	}
 
 	lhc.Peers = append(lhc.Peers, pc)
@@ -779,7 +782,11 @@ func (lhc *LocalHeaderCache) RefreshStatus() (status string) {
 	status += fmt.Sprintf("\nWebsocket Peers:\n")
 	for _, wsh := range wsHandlerList {
 		if wsh.remote == nil {
-			status += fmt.Sprintf("Pending WS peer %s:%d (inbound)\n", wsh.tmpStatus.Network.Host, wsh.tmpStatus.Network.MSGPort)
+			if wsh.tmpStatus != nil {
+				status += fmt.Sprintf("Pending WS peer %s:%d (inbound)\n", wsh.tmpStatus.Network.Host, wsh.tmpStatus.Network.MSGPort)
+			} else {
+				status += fmt.Sprintf("Pending WS peer (unknown) (inbound)\n")
+			}
 		} else {
 			status += fmt.Sprintf("Connected WS peer %s:%d ", wsh.remote.host, wsh.remote.port)
 			if wsh.inbound {

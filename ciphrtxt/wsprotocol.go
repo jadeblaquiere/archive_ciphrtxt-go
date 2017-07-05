@@ -51,6 +51,8 @@ type WSProtocolHandler interface {
 	OnDisconnect(f WSDisconnectFunc)
 	Disconnect()
 	Status() *StatusResponse
+	RequestStatus()
+	AdoptRemote(rhc *HeaderCache)
 }
 
 func NewWSProtocolHandler(con cwebsocket.ClientConnection, local *LocalHeaderCache, remote *HeaderCache) WSProtocolHandler {
@@ -85,6 +87,10 @@ type wsHandler struct {
 
 var wsHandlerList []*wsHandler
 var wsHandlerListMutex sync.Mutex
+
+func (wsh *wsHandler) AdoptRemote(rhc *HeaderCache) {
+	wsh.remote = rhc
+}
 
 func (wsh *wsHandler) resetTimeTickle() {
 	if !wsh.timeTickle.Stop() {
@@ -158,6 +164,8 @@ func (wsh *wsHandler) rxStatus(m []byte) {
 			// fmt.Printf("rx<-STATUS from Pending Peer %s:%d\n", status.Network.Host, status.Network.MSGPort)
 			wsh.tmpStatus = &status
 		}
+	} else {
+		fmt.Printf("SERVER: unable to unmarshal %s\n", string(m))
 	}
 }
 
@@ -294,6 +302,12 @@ func (wsh *wsHandler) Disconnect() {
 		}
 	}
 	panic("wsHandler.Disconnect: trying to remove element not in list")
+}
+
+func (wsh *wsHandler) RequestStatus() {
+	wsh.resetStatusTickle()
+	wsh.log("tx->STATUS REQUEST to")
+	wsh.con.Emit("request-status", int(0))
 }
 
 func (wsh *wsHandler) eventLoop() {
