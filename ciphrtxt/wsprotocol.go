@@ -73,7 +73,7 @@ type wsHandler struct {
 	con          cwebsocket.ClientConnection
 	local        *LocalHeaderCache
 	remote       *HeaderCache
-	tmpStatus    StatusResponse
+	tmpStatus    *StatusResponse
 	disconnect   WSDisconnectFunc
 	watchdog     *time.Timer
 	timeTickle   *time.Timer
@@ -140,6 +140,8 @@ func (wsh *wsHandler) txStatus(t int) {
 		// fmt.Printf("tx->STATUS to Pending Peer\n")
 		// }
 		wsh.con.Emit("response-status", j)
+	} else {
+		fmt.Printf("CLIENT: failed to marshal status response")
 	}
 }
 
@@ -154,7 +156,7 @@ func (wsh *wsHandler) rxStatus(m []byte) {
 			wsh.remote.status = status
 		} else {
 			// fmt.Printf("rx<-STATUS from Pending Peer %s:%d\n", status.Network.Host, status.Network.MSGPort)
-			wsh.tmpStatus = status
+			wsh.tmpStatus = &status
 		}
 	}
 }
@@ -165,7 +167,7 @@ func (wsh *wsHandler) txPeers(t int) {
 	for _, peer := range peers {
 		j, err := json.Marshal(peer)
 		if err == nil {
-			wsh.log(fmt.Sprintf("tx->PEER (%s:%d) to ", peer.Host, peer.Port))
+			wsh.log(fmt.Sprintf("tx->PEER (%s:%d) to", peer.Host, peer.Port))
 			// if wsh.remote != nil {
 			// fmt.Printf("tx->PEER %s:%d to %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
 			// } else {
@@ -224,7 +226,11 @@ func (wsh *wsHandler) log(logmsg string) {
 	if wsh.remote != nil {
 		fmt.Printf("%s %s:%d\n", logmsg, wsh.remote.host, wsh.remote.port)
 	} else {
-		fmt.Printf("%s Pending (%s:%d)\n", logmsg, wsh.tmpStatus.Network.Host, wsh.tmpStatus.Network.MSGPort)
+		if wsh.tmpStatus != nil {
+			fmt.Printf("%s Pending (%s:%d)\n", logmsg, wsh.tmpStatus.Network.Host, wsh.tmpStatus.Network.MSGPort)
+		} else {
+			fmt.Printf("%s Pending (unknown)\n", logmsg)
+		}
 	}
 }
 
@@ -236,7 +242,7 @@ func (wsh *wsHandler) Status() *StatusResponse {
 	if wsh.remote != nil {
 		return &wsh.remote.status
 	} else {
-		return &wsh.tmpStatus
+		return wsh.tmpStatus
 	}
 }
 
@@ -276,7 +282,7 @@ func (wsh *wsHandler) Disconnect() {
 		<-wsh.watchdog.C
 	}
 	wsh.abort <- true
-	wsh.con.Disconnect()
+	//wsh.con.Disconnect()
 	wsHandlerListMutex.Lock()
 	defer wsHandlerListMutex.Unlock()
 	for i, w := range wsHandlerList {
@@ -298,29 +304,32 @@ func (wsh *wsHandler) eventLoop() {
 			wsh.Disconnect()
 			return
 		case <-wsh.timeTickle.C:
-			if wsh.remote != nil {
-				fmt.Printf("tx->TIME REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
-			} else {
-				fmt.Printf("tx->TIME REQUEST to Pending Peer\n")
-			}
+			wsh.log("tx->TIME REQUEST to")
+			// if wsh.remote != nil {
+			// fmt.Printf("tx->TIME REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			// } else {
+			// fmt.Printf("tx->TIME REQUEST to Pending Peer\n")
+			// }
 			wsh.con.Emit("request-time", int(0))
 			wsh.timeTickle.Reset(DefaultTimeTickle)
 			continue
 		case <-wsh.statusTickle.C:
-			if wsh.remote != nil {
-				fmt.Printf("tx->STATUS REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
-			} else {
-				fmt.Printf("tx->STATUS REQUEST to Pending Peer\n")
-			}
+			wsh.log("tx->STATUS REQUEST to")
+			// if wsh.remote != nil {
+			// fmt.Printf("tx->STATUS REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			// } else {
+			// fmt.Printf("tx->STATUS REQUEST to Pending Peer\n")
+			// }
 			wsh.con.Emit("request-status", int(0))
 			wsh.statusTickle.Reset(DefaultStatusTickle)
 			continue
 		case <-wsh.peersTickle.C:
-			if wsh.remote != nil {
-				fmt.Printf("tx->PEERS REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
-			} else {
-				fmt.Printf("tx->PEERS REQUEST to Pending Peer\n")
-			}
+			wsh.log("tx->PEERS REQUEST to")
+			// if wsh.remote != nil {
+			// 	fmt.Printf("tx->PEERS REQUEST to %s:%d\n", wsh.remote.host, wsh.remote.port)
+			// } else {
+			// 	fmt.Printf("tx->PEERS REQUEST to Pending Peer\n")
+			// }
 			wsh.con.Emit("request-peers", int(0))
 			wsh.statusTickle.Reset(DefaultStatusTickle)
 			continue
