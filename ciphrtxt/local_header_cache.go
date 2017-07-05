@@ -1,4 +1,4 @@
-// Copyright (c) 2016, Joseph deBlaquiere <jadeblaquiere@yahoo.com>
+// Copyright (c) 2016-2017, Joseph deBlaquiere <jadeblaquiere@yahoo.com>
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:

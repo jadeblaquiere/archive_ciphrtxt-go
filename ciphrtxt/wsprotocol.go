@@ -1,4 +1,4 @@
-// Copyright (c) 2016, Joseph deBlaquiere <jadeblaquiere@yahoo.com>
+// Copyright (c) 2017, Joseph deBlaquiere <jadeblaquiere@yahoo.com>
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
@@ -111,18 +111,20 @@ func (wsh *wsHandler) resetWatchdog() {
 
 func (wsh *wsHandler) txTime(t int) {
 	wsh.resetTimeTickle()
-	if wsh.remote != nil {
-		fmt.Printf("tx->TIME to %s:%d\n", wsh.remote.host, wsh.remote.port)
-	} else {
-		fmt.Printf("tx->TIME to Pending Peer\n")
-	}
+	wsh.log("tx->TIME to")
+	// if wsh.remote != nil {
+	// fmt.Printf("tx->TIME to %s:%d\n", wsh.remote.host, wsh.remote.port)
+	// } else {
+	// fmt.Printf("tx->TIME to Pending Peer\n")
+	// }
 	wsh.con.Emit("response-time", int(time.Now().Unix()))
 }
 
 func (wsh *wsHandler) rxTime(t int) {
 	wsh.resetWatchdog()
+	wsh.log("rx<-TIME from")
 	if wsh.remote != nil {
-		fmt.Printf("rx<-TIME from %s:%d\n", wsh.remote.host, wsh.remote.port)
+		// fmt.Printf("rx<-TIME from %s:%d\n", wsh.remote.host, wsh.remote.port)
 		wsh.remote.serverTime = uint32(t)
 	}
 }
@@ -131,11 +133,12 @@ func (wsh *wsHandler) txStatus(t int) {
 	wsh.resetWatchdog()
 	j, err := json.Marshal(wsh.local.Status())
 	if err == nil {
-		if wsh.remote != nil {
-			fmt.Printf("tx->STATUS to %s:%d\n", wsh.remote.host, wsh.remote.port)
-		} else {
-			fmt.Printf("tx->STATUS to Pending Peer\n")
-		}
+		wsh.log("tx->STATUS to")
+		// if wsh.remote != nil {
+		// fmt.Printf("tx->STATUS to %s:%d\n", wsh.remote.host, wsh.remote.port)
+		// } else {
+		// fmt.Printf("tx->STATUS to Pending Peer\n")
+		// }
 		wsh.con.Emit("response-status", j)
 	}
 }
@@ -145,11 +148,12 @@ func (wsh *wsHandler) rxStatus(m []byte) {
 	err := json.Unmarshal(m, &status)
 	if err == nil {
 		wsh.resetStatusTickle()
+		wsh.log("rx<-STATUS from")
 		if wsh.remote != nil {
-			fmt.Printf("rx<-STATUS from %s:%d\n", wsh.remote.host, wsh.remote.port)
+			// fmt.Printf("rx<-STATUS from %s:%d\n", wsh.remote.host, wsh.remote.port)
 			wsh.remote.status = status
 		} else {
-			fmt.Printf("rx<-STATUS from Pending Peer %s:%d\n", status.Network.Host, status.Network.MSGPort)
+			// fmt.Printf("rx<-STATUS from Pending Peer %s:%d\n", status.Network.Host, status.Network.MSGPort)
 			wsh.tmpStatus = status
 		}
 	}
@@ -161,11 +165,12 @@ func (wsh *wsHandler) txPeers(t int) {
 	for _, peer := range peers {
 		j, err := json.Marshal(peer)
 		if err == nil {
-			if wsh.remote != nil {
-				fmt.Printf("tx->PEER %s:%d to %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
-			} else {
-				fmt.Printf("tx->PEER %s:%d to Pending Peer\n", peer.Host, peer.Port)
-			}
+			wsh.log(fmt.Sprintf("tx->PEER (%s:%d) to ", peer.Host, peer.Port))
+			// if wsh.remote != nil {
+			// fmt.Printf("tx->PEER %s:%d to %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
+			// } else {
+			// fmt.Printf("tx->PEER %s:%d to Pending Peer\n", peer.Host, peer.Port)
+			// }
 			wsh.con.Emit("response-peer", j)
 		}
 	}
@@ -176,17 +181,19 @@ func (wsh *wsHandler) rxPeer(m []byte) {
 	var peer PeerItemResponse
 	err := json.Unmarshal(m, &peer)
 	if err == nil {
-		if wsh.remote != nil {
-			fmt.Printf("rx<-PEER %s:%d from %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
-		} else {
-			fmt.Printf("rx<-PEER %s:%d from Pending Peer\n", peer.Host, peer.Port)
-		}
+		wsh.log(fmt.Sprintf("rx<-PEER (%s:%d) from", peer.Host, peer.Port))
+		// if wsh.remote != nil {
+		// fmt.Printf("rx<-PEER %s:%d from %s:%d\n", peer.Host, peer.Port, wsh.remote.host, wsh.remote.port)
+		// } else {
+		// fmt.Printf("rx<-PEER %s:%d from Pending Peer\n", peer.Host, peer.Port)
+		//}
 		wsh.local.AddPeer(peer.Host, peer.Port)
 	}
 }
 
 func (wsh *wsHandler) TxHeader(rmh MessageHeader) {
-	fmt.Printf("tx->HEADER to %s:%d\n", wsh.remote.host, wsh.remote.port)
+	//fmt.Printf("tx->HEADER to %s:%d\n", wsh.remote.host, wsh.remote.port)
+	wsh.log("tx->HEADER to")
 	wsh.con.Emit("response-header", rmh.Serialize())
 }
 
@@ -195,8 +202,9 @@ func (wsh *wsHandler) rxHeader(s string) {
 	err := rmh.Deserialize(s)
 	if err == nil {
 		wsh.resetWatchdog()
+		wsh.log("rx<-HEADER from")
 		if wsh.remote != nil {
-			fmt.Printf("rx<-HEADER from %s:%d\n", wsh.remote.host, wsh.remote.port)
+			// fmt.Printf("rx<-HEADER from %s:%d\n", wsh.remote.host, wsh.remote.port)
 			insert, err := wsh.remote.Insert(rmh)
 			if err != nil {
 				return
@@ -204,11 +212,19 @@ func (wsh *wsHandler) rxHeader(s string) {
 			if insert {
 				_, _ = wsh.local.Insert(rmh)
 			}
-		} else {
-			fmt.Printf("rx<-HEADER from Pending Peer\n")
+			// } else {
+			// fmt.Printf("rx<-HEADER from Pending Peer\n")
 		}
 	} else {
 		fmt.Printf("rx<-HEADER, error deserializing %s (len %d)\n", s, len(s))
+	}
+}
+
+func (wsh *wsHandler) log(logmsg string) {
+	if wsh.remote != nil {
+		fmt.Printf("%s %s:%d\n", logmsg, wsh.remote.host, wsh.remote.port)
+	} else {
+		fmt.Printf("%s Pending (%s:%d)\n", logmsg, wsh.tmpStatus.Network.Host, wsh.tmpStatus.Network.MSGPort)
 	}
 }
 
@@ -238,10 +254,7 @@ func (wsh *wsHandler) setup() {
 	wsh.con.On("request-peers", wsh.txPeers)
 	wsh.con.On("response-peer", wsh.rxPeer)
 	wsh.con.OnDisconnect(func() {
-		if wsh.disconnect != nil {
-			wsh.disconnect()
-			wsh.Disconnect()
-		}
+		wsh.Disconnect()
 	})
 
 	go wsh.eventLoop()
@@ -249,6 +262,10 @@ func (wsh *wsHandler) setup() {
 }
 
 func (wsh *wsHandler) Disconnect() {
+	if wsh.disconnect != nil {
+		wsh.disconnect()
+
+	}
 	if !wsh.timeTickle.Stop() {
 		<-wsh.timeTickle.C
 	}
@@ -278,9 +295,6 @@ func (wsh *wsHandler) eventLoop() {
 		select {
 		case <-wsh.watchdog.C:
 			fmt.Println("Watchdog expired, closing connection")
-			if wsh.disconnect != nil {
-				wsh.disconnect()
-			}
 			wsh.Disconnect()
 			return
 		case <-wsh.timeTickle.C:
