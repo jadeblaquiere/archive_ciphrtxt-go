@@ -484,9 +484,10 @@ func (lhc *LocalHeaderCache) Sync() (err error) {
 	lhc.peerCandidateMutex.Unlock()
 
 	for _, pc := range candidates {
-		if lhc.addPeer(pc) != nil {
-			fmt.Printf("LocalHeaderCache: failed to add peer %s, %d\n", pc.host, pc.port)
-		}
+		lhc.addPeer(pc)
+		// if lhc.addPeer(pc) != nil {
+		// fmt.Printf("LocalHeaderCache: failed to add peer %s, %d\n", pc.host, pc.port)
+		// }
 	}
 
 	err = lhc.pruneExpired()
